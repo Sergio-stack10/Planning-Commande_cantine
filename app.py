@@ -23,10 +23,10 @@ custom_css = """
     
     /* 2. Titre principal */
     h1 {
-        color: #003D5B !important;
+        color: #25E2CC !important;
         font-weight: 600;
         padding-bottom: 10px;
-        border-bottom: 3px solid #25E2CC;
+        border-bottom: 2px solid #003D5B;
     }
     
         /* 3. Menu latéral (Midnight) - Réduit et éclairci */
@@ -42,7 +42,7 @@ custom_css = """
     section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], 
     section[data-testid="stSidebar"] label {
         font-size: 13px !important;
-        color: #FFFFFF !important;
+        color: #747474 !important;
     }
     /* En-têtes (Importation, Paramètres) en couleur plus claire */
     section[data-testid="stSidebar"] h1, 
@@ -72,11 +72,10 @@ custom_css = """
         border-color: #25E2CC;
         background-color: #E9FCFA;
     }
-    /* Onglet sélectionné (Vert jade) */
+    /* Onglet sélectionné (Bleu roi foncé) */
     .stTabs [aria-selected="true"] {
-        background-color: #007380 !important;
+        background-color: #003D5B !important;
         color: #FFFFFF !important;
-        border: 2px solid #007380 !important;
         box-shadow: 0 4px 12px rgba(0, 115, 128, 0.3);
     }
     .stTabs [data-baseweb="tab-highlight"] {
@@ -128,19 +127,19 @@ custom_css = """
         color: #007380;
         font-weight: bold;
     }
-    /* 9. Signature fixée en bas de page */
+    /* 9. Signature fixée en bas à gauche */
     .footer-fix {
-        position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        background-color: #FFFFFF; /* Fond blanc pour bien la voir */
-        color: #2A2B2C;
-        text-align: center;
-        font-size: 12px;
-        padding: 8px 0;
-        z-index: 999;
-        border-top: 1px solid #F2F2F2; /* Petite ligne de séparation */
+        position: fixed !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        background-color: #002032 !important; 
+        color: #FFFFFF !important; 
+        text-align: left !important; 
+        font-size: 10px !important; 
+        padding: 5px 15px !important;
+        z-index: 999999 !important; /* Force la signature à passer au tout premier plan */
+        border-top: 1px solid #F2F2F2 !important;
     }
 </style>
 """
