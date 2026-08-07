@@ -113,6 +113,20 @@ custom_css = """
         color: #007380;
         font-weight: bold;
     }
+    /* 9. Signature fixée en bas de page */
+    .footer-fix {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #FFFFFF; /* Fond blanc pour bien la voir */
+        color: #2A2B2C;
+        text-align: center;
+        font-size: 12px;
+        padding: 8px 0;
+        z-index: 999;
+        border-top: 1px solid #F2F2F2; /* Petite ligne de séparation */
+    }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -533,11 +547,10 @@ with tab5:
             excel_data = to_excel(df_filtered_anom)
             st.download_button("📥 Télécharger les anomalies (Filtré)", data=excel_data, file_name="anomalies.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             st.dataframe(df_filtered_anom, use_container_width=True, height=600)
-# --- SIGNATURE ---
-st.markdown("---")
+# --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
-    "<div style='text-align: center; color: #2A2B2C; font-size: 12px; margin-top: 20px;'>"
-    "Développé avec ❤️ par <b>[Votre Nom / Prénom]</b> • Concentrix Tamatave"
+    "<div class='footer-fix'>"
+    "Développé avec ❤️ par <b>[Ravo / Sergio]</b> • Concentrix Tamatave"
     "</div>", 
     unsafe_allow_html=True
 )
