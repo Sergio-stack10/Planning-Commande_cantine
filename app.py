@@ -550,7 +550,7 @@ with tab5:
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
     "<div class='footer-fix'>"
-    "Développé avec ❤️ par <b>[Ravo / Sergio]</b> • Concentrix Tamatave"
+    "Développé avec ❤️ par <span style='color: #007380; font-weight: bold;'>Ravo  Sergio</span> • Concentrix Tamatave"
     "</div>", 
     unsafe_allow_html=True
 )
