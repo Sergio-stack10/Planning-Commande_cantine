@@ -533,3 +533,11 @@ with tab5:
             excel_data = to_excel(df_filtered_anom)
             st.download_button("📥 Télécharger les anomalies (Filtré)", data=excel_data, file_name="anomalies.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             st.dataframe(df_filtered_anom, use_container_width=True, height=600)
+# --- SIGNATURE ---
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #2A2B2C; font-size: 12px; margin-top: 20px;'>"
+    "Développé avec ❤️ par <b>[Votre Nom / Prénom]</b> • Concentrix Tamatave"
+    "</div>", 
+    unsafe_allow_html=True
+)
