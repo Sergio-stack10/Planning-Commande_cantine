@@ -29,12 +29,27 @@ custom_css = """
         border-bottom: 3px solid #25E2CC;
     }
     
-    /* 3. Menu latéral (Midnight) */
+        /* 3. Menu latéral (Midnight) - Réduit et éclairci */
     section[data-testid="stSidebar"] {
         background-color: #002032;
+        width: 260px !important; /* Réduction de la largeur */
     }
-    section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] header {
+    section[data-testid="stSidebar"] > div:first-child {
+        width: 260px !important; /* Ajustement interne Streamlit */
+        padding-top: 20px;
+    }
+    /* Réduire la police de base du menu */
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], 
+    section[data-testid="stSidebar"] label {
+        font-size: 13px !important;
         color: #FFFFFF !important;
+    }
+    /* En-têtes (Importation, Paramètres) en couleur plus claire */
+    section[data-testid="stSidebar"] h1, 
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3 {
+        color: #A8F3EB !important; /* Turquoise 40% (plus clair) */
+        font-size: 15px !important;
     }
     
     /* 4. Onglets transformés en KPI Cards */
