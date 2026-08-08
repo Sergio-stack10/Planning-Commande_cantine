@@ -23,32 +23,30 @@ custom_css = """
     
     /* 2. Titre principal */
     h1 {
-        color: #25E2CC !important;
+        color: #003D5B !important;
         font-weight: 600;
         padding-bottom: 10px;
-        border-bottom: 2px solid #003D5B;
+        border-bottom: 3px solid #25E2CC;
     }
     
-        /* 3. Menu latéral (Midnight) - Réduit et éclairci */
+    /* 3. Menu latéral (Midnight) - Réduit et éclairci */
     section[data-testid="stSidebar"] {
         background-color: #002032;
-        width: 260px !important; /* Réduction de la largeur */
+        width: 260px !important;
     }
     section[data-testid="stSidebar"] > div:first-child {
-        width: 260px !important; /* Ajustement interne Streamlit */
+        width: 260px !important;
         padding-top: 20px;
     }
-    /* Réduire la police de base du menu */
     section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], 
     section[data-testid="stSidebar"] label {
         font-size: 13px !important;
-        color: #747474 !important;
+        color: #FFFFFF !important;
     }
-    /* En-têtes (Importation, Paramètres) en couleur plus claire */
     section[data-testid="stSidebar"] h1, 
     section[data-testid="stSidebar"] h2, 
     section[data-testid="stSidebar"] h3 {
-        color: #A8F3EB !important; /* Turquoise 40% (plus clair) */
+        color: #A8F3EB !important;
         font-size: 15px !important;
     }
     
@@ -62,7 +60,6 @@ custom_css = """
         border: 2px solid #F2F2F2;
         border-radius: 8px;
         padding: 12px 20px;
-        /* Coin gauche tronqué */
         clip-path: polygon(15px 0%, 100% 0%, 100% 100%, 15px 100%, 0% 50%);
         font-weight: bold;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
@@ -72,10 +69,11 @@ custom_css = """
         border-color: #25E2CC;
         background-color: #E9FCFA;
     }
-    /* Onglet sélectionné (Bleu roi foncé) */
+    /* Onglet sélectionné (Vert jade) */
     .stTabs [aria-selected="true"] {
-        background-color: #003D5B !important;
+        background-color: #007380 !important;
         color: #FFFFFF !important;
+        border: 2px solid #007380 !important;
         box-shadow: 0 4px 12px rgba(0, 115, 128, 0.3);
     }
     .stTabs [data-baseweb="tab-highlight"] {
@@ -87,20 +85,20 @@ custom_css = """
     
     /* 5. Boutons d'action (Forme Pilule / Formée) */
     div.stButton > button {
-        background-color: #003D5B; /* Bleu roi */
+        background-color: #003D5B;
         color: #FFFFFF;
         border: 2px solid #003D5B;
         padding: 10px 25px;
-        border-radius: 25px; /* Forme pilule */
+        border-radius: 25px;
         font-weight: bold;
         box-shadow: 0 4px 8px rgba(0, 61, 91, 0.2);
         transition: all 0.3s ease;
     }
     div.stButton > button:hover {
-        background-color: #FBCA18; /* Jaune soleil au survol */
-        color: #002032; /* Texte Midnight */
+        background-color: #FBCA18;
+        color: #002032;
         border-color: #FBCA18;
-        transform: translateY(-2px); /* Léger soulèvement */
+        transform: translateY(-2px);
     }
     
     /* 6. Boutons de téléchargement (Turquoise) */
@@ -127,18 +125,19 @@ custom_css = """
         color: #007380;
         font-weight: bold;
     }
+
     /* 9. Signature fixée en bas à gauche */
     .footer-fix {
         position: fixed !important;
         left: 0 !important;
         bottom: 0 !important;
         width: 100% !important;
-        background-color: #002032 !important; 
-        color: #FFFFFF !important; 
+        background-color: #FFFFFF !important; 
+        color: #003D5B !important; 
         text-align: left !important; 
         font-size: 10px !important; 
         padding: 5px 15px !important;
-        z-index: 999999 !important; /* Force la signature à passer au tout premier plan */
+        z-index: 999999 !important; 
         border-top: 1px solid #F2F2F2 !important;
     }
 </style>
@@ -278,11 +277,11 @@ def parse_commande(file):
     df = df[df['Paid ID'].str.contains(r'[A-Z]-?\d', na=False)]
     return df
 
-# --- AFFICHAGE DES ONGLETS (TOUJOURS VISIBLES) ---
+# --- AFFICHAGE DES ONGLETS ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📄 1. Regroupement Planning", 
     "📈 2. Effectifs & Prévisions", 
-    "⚠️ 3. Confrontation planning & commande", 
+    "⚠️ 3. Confrontation", 
     "🍽️ 4. Commandes par menu",
     "❌ 5. Anomalies"
 ])
@@ -306,14 +305,12 @@ with tab1:
             
     if st.session_state.show_p1 and st.session_state.planning_data is not None:
         st.markdown("---")
-        
         display_planning = st.session_state.planning_data.copy()
         for j in jours:
             for suffix in ['_DE', '_A']:
                 col = f'{j}{suffix}'
                 display_planning[col] = display_planning[col].apply(format_time_display)
         
-        # --- FILTRES (MULTISELECT) ---
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         with col_f1:
             opts_trans = sorted(display_planning['TRANSPORT'].astype(str).unique().tolist())
@@ -331,18 +328,12 @@ with tab1:
             opts_statut = sorted(display_planning['Statut'].astype(str).unique().tolist())
             sel_statut = st.multiselect("Statut", opts_statut, default=[], key="f1_statut")
             
-        # Application des filtres (si vide, aucun filtre appliqué)
         df_filtered = display_planning.copy()
-        if sel_trans:
-            df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
-        if sel_paid:
-            df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
-        if sel_nom:
-            df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
-        if sel_projet:
-            df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
-        if sel_statut:
-            df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
+        if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
+        if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
+        if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
+        if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
+        if sel_statut: df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
         
         cols_to_show = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
         for j in jours: cols_to_show += [f'{j}_DE', f'{j}_A', f'{j}_Flag']
@@ -363,12 +354,9 @@ with tab2:
             
     if st.session_state.show_p2 and st.session_state.planning_data is not None:
         st.markdown("---")
-        
-        # --- FILTRE PROJET MULTIPLE ---
         opts_projet_p2 = sorted(st.session_state.planning_data['Projet'].astype(str).unique().tolist())
         sel_projet_p2 = st.multiselect("Filtrer par Projet", opts_projet_p2, default=[], key="f2_projet")
         
-        # Filtrage des données avant le pivot (si vide, aucun filtre appliqué)
         planning_calc = st.session_state.planning_data.copy()
         if sel_projet_p2:
             planning_calc = planning_calc[planning_calc['Projet'].astype(str).isin(sel_projet_p2)]
@@ -431,7 +419,6 @@ with tab3:
         st.markdown("---")
         df_p3 = st.session_state.page3_df.copy()
         
-        # --- FILTRES (MULTISELECT - SANS TRANSPORT) ---
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             opts_paid = sorted(df_p3['Paid ID'].astype(str).unique().tolist())
@@ -446,16 +433,11 @@ with tab3:
             opts_statut = sorted(df_p3['Statut'].astype(str).unique().tolist())
             sel_statut = st.multiselect("Statut", opts_statut, default=[], key="f3_statut")
             
-        # Application des filtres (si vide, aucun filtre appliqué)
         df_filtered_p3 = df_p3.copy()
-        if sel_paid:
-            df_filtered_p3 = df_filtered_p3[df_filtered_p3['Paid ID'].astype(str).isin(sel_paid)]
-        if sel_nom:
-            df_filtered_p3 = df_filtered_p3[df_filtered_p3['Nom'].astype(str).isin(sel_nom)]
-        if sel_projet:
-            df_filtered_p3 = df_filtered_p3[df_filtered_p3['Projet'].astype(str).isin(sel_projet)]
-        if sel_statut:
-            df_filtered_p3 = df_filtered_p3[df_filtered_p3['Statut'].astype(str).isin(sel_statut)]
+        if sel_paid: df_filtered_p3 = df_filtered_p3[df_filtered_p3['Paid ID'].astype(str).isin(sel_paid)]
+        if sel_nom: df_filtered_p3 = df_filtered_p3[df_filtered_p3['Nom'].astype(str).isin(sel_nom)]
+        if sel_projet: df_filtered_p3 = df_filtered_p3[df_filtered_p3['Projet'].astype(str).isin(sel_projet)]
+        if sel_statut: df_filtered_p3 = df_filtered_p3[df_filtered_p3['Statut'].astype(str).isin(sel_statut)]
         
         st.markdown("---")
         excel_data = to_excel(df_filtered_p3)
@@ -536,7 +518,6 @@ with tab5:
             df_anom = st.session_state.anomalies_df.copy()
             df_anom = df_anom.sort_values(by=["Type d'anomalie", "Jour", "Nom"])
             
-            # --- FILTRES (MULTISELECT) ---
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
                 opts_paid = sorted(df_anom['Paid ID'].astype(str).unique().tolist())
@@ -548,19 +529,16 @@ with tab5:
                 opts_projet = sorted(df_anom['Projet'].astype(str).unique().tolist())
                 sel_projet = st.multiselect("Projet", opts_projet, default=[], key="f5_projet")
                 
-            # Application des filtres (si vide, aucun filtre appliqué)
             df_filtered_anom = df_anom.copy()
-            if sel_paid:
-                df_filtered_anom = df_filtered_anom[df_filtered_anom['Paid ID'].astype(str).isin(sel_paid)]
-            if sel_nom:
-                df_filtered_anom = df_filtered_anom[df_filtered_anom['Nom'].astype(str).isin(sel_nom)]
-            if sel_projet:
-                df_filtered_anom = df_filtered_anom[df_filtered_anom['Projet'].astype(str).isin(sel_projet)]
+            if sel_paid: df_filtered_anom = df_filtered_anom[df_filtered_anom['Paid ID'].astype(str).isin(sel_paid)]
+            if sel_nom: df_filtered_anom = df_filtered_anom[df_filtered_anom['Nom'].astype(str).isin(sel_nom)]
+            if sel_projet: df_filtered_anom = df_filtered_anom[df_filtered_anom['Projet'].astype(str).isin(sel_projet)]
             
             st.markdown("---")
             excel_data = to_excel(df_filtered_anom)
             st.download_button("📥 Télécharger les anomalies (Filtré)", data=excel_data, file_name="anomalies.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             st.dataframe(df_filtered_anom, use_container_width=True, height=600)
+
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
     "<div class='footer-fix'>"
