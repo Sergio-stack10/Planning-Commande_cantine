@@ -7,7 +7,7 @@ import io
 # --- NETTOYAGE DU CACHE ---
 st.cache_data.clear()
 
-st.set_page_config(page_title="LoguPlan", layout="wide")
+st.set_page_config(page_title="LogiPlan", layout="wide")
 
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
@@ -32,10 +32,10 @@ custom_css = """
     /* 3. Menu latéral (Midnight) - Réduit et éclairci */
     section[data-testid="stSidebar"] {
         background-color: #002032;
-        width: 260px !important;
+        width: 260px !important; 
     }
     section[data-testid="stSidebar"] > div:first-child {
-        width: 260px !important;
+        width: 260px !important; 
         padding-top: 20px;
     }
     section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], 
@@ -46,7 +46,7 @@ custom_css = """
     section[data-testid="stSidebar"] h1, 
     section[data-testid="stSidebar"] h2, 
     section[data-testid="stSidebar"] h3 {
-        color: #A8F3EB !important;
+        color: #A8F3EB !important; 
         font-size: 15px !important;
     }
     
@@ -69,7 +69,6 @@ custom_css = """
         border-color: #25E2CC;
         background-color: #E9FCFA;
     }
-    /* Onglet sélectionné (Bleu roi foncé) */
     .stTabs [aria-selected="true"] {
         background-color: #003D5B !important;
         color: #FFFFFF !important;
@@ -145,8 +144,8 @@ st.markdown(custom_css, unsafe_allow_html=True)
 st.title("📊 LogiPlan")
 
 st.sidebar.header("1. Importation des fichiers")
-files_planning = st.sidebar.file_uploader("Fichiers Planning (1 ou 2)", type=['xlsx', 'xls', 'xlsb'], accept_multiple_files=True)
-file_commande = st.sidebar.file_uploader("Fichier Commandes", type=['xlsx'])
+files_planning = st.sidebar.file_uploader("Fichiers Planning (Obligatoire)", type=['xlsx', 'xls', 'xlsb'], accept_multiple_files=True)
+file_commande = st.sidebar.file_uploader("Fichier Commandes (Optionnel)", type=['xlsx'])
 
 st.sidebar.header("2. Paramètres d'absentéisme")
 taux_absenteisme = st.sidebar.slider("Estimation de l'absentéisme (%)", 0, 30, 5)
@@ -217,15 +216,12 @@ def get_time_obj(val):
     return None
 
 def get_pause_start(val):
-    """Extrait l'heure de début de pause depuis des formats comme '12:00-13:00' ou '12:00'."""
     if pd.isna(val) or str(val).strip() in ['', '*', 'nan', 'None', '0', '0:00', '00:00', '0:00:00', '00:00:00']: return None
     if isinstance(val, datetime.time): return val
     if isinstance(val, (datetime.datetime, pd.Timestamp)): return val.time()
-    
     val_str = str(val).strip()
     if '-' in val_str:
         val_str = val_str.split('-')[0].strip()
-        
     try:
         dt = pd.to_datetime(val_str, errors='coerce')
         if not pd.isna(dt): return dt.time()
@@ -251,33 +247,26 @@ def is_absence_command(cmd_val):
     return 'JE NE SERAI PAS' in str(cmd_val).strip().upper()
 
 def calculate_slots(de, a, pause_start):
-    """Calcule les tranches horaires de présence."""
     if not de or not a: return []
-    
     slots = []
     de_h = de.hour
     a_h = a.hour
     if a.minute > 0 or a.second > 0:
         a_h += 1
-        
-    if a <= de: # Shift traverse minuit (ex: 17:00 -> 02:00)
+    if a <= de:
         for h in range(de_h, 24):
             slots.append((0, h))
         for h in range(0, a_h):
             slots.append((1, h))
-    else: # Shift classique (ex: 08:00 -> 17:00)
+    else:
         for h in range(de_h, a_h):
             slots.append((0, h))
-            
-    # Déduction de la pause déjeuner (1h)
     if pause_start:
         pause_h = pause_start.hour
         slots = [s for s in slots if s[1] != pause_h]
     else:
-        # Fallback: 4h après le début du shift
         fallback_h = (de_h + 4) % 24
         slots = [s for s in slots if s[1] != fallback_h]
-        
     return slots
 
 # --- FONCTIONS DE TRAITEMENT ---
@@ -298,23 +287,47 @@ def parse_planning(files):
                         'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
             df = df.iloc[:, cols]
             df.columns = new_cols
+            
         elif "TMM" in xls.sheet_names:
-            df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=2, engine=engine)
-            cols = [0, 4, 2, 5, 8, 10, 11, 12, 13, 17, 18, 19, 23, 24, 25, 29, 30, 31, 35, 36, 37, 41, 42, 43, 47, 48, 49]
-            new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut', 
-                        'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause', 
-                        'Mercredi_DE', 'Mercredi_A', 'Mercredi_Pause', 'Jeudi_DE', 'Jeudi_A', 'Jeudi_Pause', 
-                        'Vendredi_DE', 'Vendredi_A', 'Vendredi_Pause', 'Samedi_DE', 'Samedi_A', 'Samedi_Pause', 
-                        'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
-            df = df.iloc[:, cols]
-            df.columns = new_cols
-        else: continue
+            # Détection automatique de la position de la colonne "Transport"
+            df_head = pd.read_excel(file, sheet_name="TMM", header=None, nrows=10, engine=engine)
+            header_row_idx = None
+            trans_col_idx = 0
+            
+            for i in range(len(df_head)):
+                row = df_head.iloc[i].astype(str).str.strip().tolist()
+                if "Transport" in row:
+                    header_row_idx = i
+                    trans_col_idx = row.index("Transport")
+                    break
+                    
+            if header_row_idx is not None:
+                df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=header_row_idx + 1, engine=engine)
+                offset = trans_col_idx
+                
+                # Les colonnes sont calculées dynamiquement en fonction de l'offset
+                cols = [0 + offset, 4 + offset, 2 + offset, 5 + offset, 8 + offset, 10 + offset, 11 + offset, 12 + offset, 13 + offset, 17 + offset, 18 + offset, 19 + offset, 23 + offset, 24 + offset, 25 + offset, 29 + offset, 30 + offset, 31 + offset, 35 + offset, 36 + offset, 37 + offset, 41 + offset, 42 + offset, 43 + offset, 47 + offset, 48 + offset, 49 + offset]
+                new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut', 
+                            'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause', 
+                            'Mercredi_DE', 'Mercredi_A', 'Mercredi_Pause', 'Jeudi_DE', 'Jeudi_A', 'Jeudi_Pause', 
+                            'Vendredi_DE', 'Vendredi_A', 'Vendredi_Pause', 'Samedi_DE', 'Samedi_A', 'Samedi_Pause', 
+                            'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
+                df = df.iloc[:, cols]
+                df.columns = new_cols
+            else:
+                continue # Si on ne trouve pas l'en-tête, on passe au fichier suivant
+                
+        else: 
+            continue
+            
         df['Paid ID'] = df['Paid ID'].astype(str).str.replace(" ", "").str.upper()
         df = df[df['Paid ID'].str.contains(r'\d', na=False)]
         for j in jours:
             df[f'{j}_Flag'] = df[f'{j}_DE'].apply(lambda x: 1 if is_planned(x) else 0)
         all_planning.append(df)
-    if all_planning: return pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['Paid ID'])
+        
+    if all_planning: 
+        return pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['Paid ID'])
     return pd.DataFrame()
 
 def parse_commande(file):
@@ -335,19 +348,19 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📄 1. Regroupement Planning", 
     "📈 2. Effectifs & Prévisions", 
     "🕒 3. Planifiés par créneau", 
-    "↔️ 4. Confrontation planning & commande", 
+    "⚠️ 4. Confrontation planning & commande", 
     "🍽️ 5. Commandes par menu",
-    "⚠️ 6. Anomalies"
+    "❌ 6. Anomalies"
 ])
 
 # --- PAGE 1 : REGROUPEMENT ---
 with tab1:
     st.header("Regroupement des plannings")
     if st.button("🚀 Lancer l'import et le regroupement", key="btn_p1"):
-        if files_planning and file_commande:
+        if files_planning:
             with st.spinner("Traitement des fichiers en cours..."):
                 st.session_state.planning_data = parse_planning(files_planning)
-                st.session_state.commande_data = parse_commande(file_commande)
+                st.session_state.commande_data = parse_commande(file_commande) if file_commande else None
                 st.session_state.show_p1 = True
                 st.session_state.show_p2 = False
                 st.session_state.show_p3_slots = False
@@ -356,7 +369,7 @@ with tab1:
                 st.session_state.show_p6_anom = False
             st.success("Données chargées avec succès !")
         else:
-            st.error("Veuillez importer les fichiers dans le menu de gauche.")
+            st.error("Veuillez importer au moins un fichier de Planning dans le menu de gauche.")
             
     if st.session_state.show_p1 and st.session_state.planning_data is not None:
         st.markdown("---")
@@ -486,34 +499,43 @@ with tab3:
 with tab4:
     st.header("↔️ Confrontation Planning & Commandes")
     if st.button("↔️ Générer la confrontation", key="btn_p4_conf"):
-        if st.session_state.planning_data is not None and st.session_state.commande_data is not None:
-            with st.spinner("Génération de la confrontation..."):
-                merged = pd.merge(st.session_state.planning_data, st.session_state.commande_data, on='Paid ID', how='outer')
-                display_rows = []
-                for _, row in merged.iterrows():
-                    has_planning = not pd.isna(row.get('Nom', np.nan))
-                    display_row = {
-                        'Paid ID': row['Paid ID'],
-                        'WORKDAY ID': row['WORKDAY ID'] if has_planning else "",
-                        'Nom': row['Nom'] if has_planning else "",
-                        'Projet': row['Projet'] if has_planning else "",
-                        'Statut': row['Statut'] if has_planning else ""
-                    }
-                    for j in jours:
-                        de_col = f'{j}_DE'
-                        a_col = f'{j}_A'
-                        cmd_col = j
-                        if has_planning and de_col in row:
-                            planning_str = get_planning_status(row[de_col], row[a_col])
-                        else:
-                            planning_str = "hors planning" if cmd_col in row and not pd.isna(row[cmd_col]) and str(row[cmd_col]).strip() not in ['*', ''] else ""
-                        commande_str = row[cmd_col] if cmd_col in row and not pd.isna(row[cmd_col]) else ""
-                        if str(commande_str).strip() in ['*', '']: commande_str = ""
-                        display_row[f'{j} - Planning'] = planning_str
-                        display_row[f'{j} - Commande'] = commande_str
-                    display_rows.append(display_row)
-                st.session_state.page4_df = pd.DataFrame(display_rows)
-                st.session_state.show_p4_conf = True
+        if st.session_state.planning_data is not None:
+            
+            # --- VÉRIFICATION DINAMIQUE DU FICHIER COMMANDE ---
+            if st.session_state.commande_data is None and file_commande is not None:
+                with st.spinner("Traitement du fichier Commandes..."):
+                    st.session_state.commande_data = parse_commande(file_commande)
+            
+            if st.session_state.commande_data is not None:
+                with st.spinner("Génération de la confrontation..."):
+                    merged = pd.merge(st.session_state.planning_data, st.session_state.commande_data, on='Paid ID', how='outer')
+                    display_rows = []
+                    for _, row in merged.iterrows():
+                        has_planning = not pd.isna(row.get('Nom', np.nan))
+                        display_row = {
+                            'Paid ID': row['Paid ID'],
+                            'WORKDAY ID': row['WORKDAY ID'] if has_planning else "",
+                            'Nom': row['Nom'] if has_planning else "",
+                            'Projet': row['Projet'] if has_planning else "",
+                            'Statut': row['Statut'] if has_planning else ""
+                        }
+                        for j in jours:
+                            de_col = f'{j}_DE'
+                            a_col = f'{j}_A'
+                            cmd_col = j
+                            if has_planning and de_col in row:
+                                planning_str = get_planning_status(row[de_col], row[a_col])
+                            else:
+                                planning_str = "hors planning" if cmd_col in row and not pd.isna(row[cmd_col]) and str(row[cmd_col]).strip() not in ['*', ''] else ""
+                            commande_str = row[cmd_col] if cmd_col in row and not pd.isna(row[cmd_col]) else ""
+                            if str(commande_str).strip() in ['*', '']: commande_str = ""
+                            display_row[f'{j} - Planning'] = planning_str
+                            display_row[f'{j} - Commande'] = commande_str
+                        display_rows.append(display_row)
+                    st.session_state.page4_df = pd.DataFrame(display_rows)
+                    st.session_state.show_p4_conf = True
+            else:
+                st.error("Veuillez importer le fichier Commandes dans le menu de gauche pour générer la confrontation.")
         else:
             st.error("Veuillez d'abord charger les données sur la Page 1.")
             
@@ -550,6 +572,12 @@ with tab4:
 with tab5:
     st.header("Nombre de commandes par menu et par jour")
     if st.button("🍽️ Calculer les commandes par menu", key="btn_p5_menus"):
+        
+        # --- VÉRIFICATION DINAMIQUE DU FICHIER COMMANDE ---
+        if st.session_state.commande_data is None and file_commande is not None:
+            with st.spinner("Traitement du fichier Commandes..."):
+                st.session_state.commande_data = parse_commande(file_commande)
+                
         if st.session_state.commande_data is not None:
             with st.spinner("Calcul des menus en cours..."):
                 cmd_data = st.session_state.commande_data.copy()
@@ -568,7 +596,7 @@ with tab5:
                     st.session_state.menus_df = pd.DataFrame()
                 st.session_state.show_p5_menus = True
         else:
-            st.error("Veuillez d'abord charger les données sur la Page 1.")
+            st.error("Veuillez importer le fichier Commandes dans le menu de gauche.")
             
     if st.session_state.show_p5_menus and st.session_state.menus_df is not None:
         st.markdown("---")
@@ -644,7 +672,7 @@ with tab6:
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
     "<div class='footer-fix'>"
-    "Powered By <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span>"
+    "Powered by <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span>"
     "</div>", 
     unsafe_allow_html=True
 )
