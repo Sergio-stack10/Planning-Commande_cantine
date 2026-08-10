@@ -7,7 +7,7 @@ import io
 # --- NETTOYAGE DU CACHE ---
 st.cache_data.clear()
 
-st.set_page_config(page_title="Planning & Commandes cantine", layout="wide")
+st.set_page_config(page_title="LoguPlan", layout="wide")
 
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
@@ -142,7 +142,7 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-st.title("📊 Planning & Commandes cantine")
+st.title("📊 LogiPlan")
 
 st.sidebar.header("1. Importation des fichiers")
 files_planning = st.sidebar.file_uploader("Fichiers Planning (1 ou 2)", type=['xlsx', 'xls', 'xlsb'], accept_multiple_files=True)
@@ -335,9 +335,9 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📄 1. Regroupement Planning", 
     "📈 2. Effectifs & Prévisions", 
     "🕒 3. Planifiés par créneau", 
-    "⚠️ 4. Confrontation planning & commande", 
+    "↔️ 4. Confrontation planning & commande", 
     "🍽️ 5. Commandes par menu",
-    "❌ 6. Anomalies"
+    "⚠️ 6. Anomalies"
 ])
 
 # --- PAGE 1 : REGROUPEMENT ---
