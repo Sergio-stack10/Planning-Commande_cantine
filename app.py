@@ -494,7 +494,7 @@ with tab3:
 
 # --- PAGE 4 : PLANIFIES PAR CRENEAU ---
 with tab4:
-    st.header("Pic de présence et créneaux horaires")
+    st.header("Poz par projet")
     if current_planning is not None:
         col_f1, col_f2 = st.columns(2)
         with col_f1: sel_projet_p4 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f4_projet")
@@ -541,7 +541,7 @@ with tab4:
             df_peaks.loc['Pic Global (Tous Projets)'] = global_peaks
             
         # 1. AFFICHAGE DU PIC EN PREMIER PLAN
-        st.markdown("#### 📊 Pic de présence par projet et par jour")
+        st.markdown("#### 📊 Poz par projet")
         st.write("Ce tableau indique le nombre maximum de personnes présentes simultanément (en overlapping de shifts).")
         st.dataframe(df_peaks.style.format("{:.0f}"), use_container_width=True)
         
