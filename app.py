@@ -89,7 +89,6 @@ if 'history_plannings' not in st.session_state:
 if 'current_week' not in st.session_state:
     st.session_state.current_week = None
 
-# Menu déroulant pour l'historique
 st.sidebar.markdown("---")
 st.sidebar.header("3. Historique des Semaines")
 available_weeks = list(st.session_state.history_plannings.keys())
@@ -110,7 +109,6 @@ else:
     st.session_state.current_week = None
     st.sidebar.info("Aucune semaine chargée. Importez un fichier planning.")
 
-# Fonctions utilitaires pour récupérer les données de la semaine sélectionnée
 def get_current_planning():
     return st.session_state.history_plannings.get(st.session_state.current_week)
 
@@ -331,7 +329,6 @@ current_planning = get_current_planning()
 with tab1:
     st.header("Regroupement des plannings")
     
-    # Détection automatique du numéro de semaine pour pré-remplir le champ texte
     default_week_name = ""
     if files_planning:
         for f in files_planning:
@@ -341,12 +338,10 @@ with tab1:
                 default_week_name = wk
                 break
                 
-    # Champ de saisie pour nommer la semaine
     week_name_input = st.text_input("Nom de la semaine à enregistrer", value=default_week_name, placeholder="Ex: S33, Semaine 34, etc.")
     
     if st.button("🚀 Lancer l'import et le regroupement", key="btn_p1"):
         if files_planning:
-            # On utilise le nom saisi, ou on retombe sur la détection auto si vide
             week_num = week_name_input.strip() if week_name_input else default_week_name
             if not week_num:
                 week_num = f"S{datetime.datetime.now().isocalendar().week:02d}"
@@ -405,11 +400,17 @@ with tab1:
 with tab2:
     st.header("Nombre de planifiés par projet et par jour")
     if current_planning is not None:
-        opts_projet_p2 = sorted(current_planning['Projet'].astype(str).unique().tolist())
-        sel_projet_p2 = st.multiselect("Filtrer par Projet", opts_projet_p2, default=[], key="f2_projet")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            opts_projet_p2 = sorted(current_planning['Projet'].astype(str).unique().tolist())
+            sel_projet_p2 = st.multiselect("Filtrer par Projet", opts_projet_p2, default=[], key="f2_projet")
+        with col_f2:
+            opts_statut_p2 = sorted(current_planning['Statut'].astype(str).unique().tolist())
+            sel_statut_p2 = st.multiselect("Filtrer par Statut", opts_statut_p2, default=[], key="f2_statut")
         
         planning_calc = current_planning.copy()
         if sel_projet_p2: planning_calc = planning_calc[planning_calc['Projet'].astype(str).isin(sel_projet_p2)]
+        if sel_statut_p2: planning_calc = planning_calc[planning_calc['Statut'].astype(str).isin(sel_statut_p2)]
         
         st.markdown("---")
         pivot_df = planning_calc.pivot_table(index='Projet', values=[f'{j}_Flag' for j in jours], aggfunc='sum', fill_value=0)
@@ -448,13 +449,15 @@ with tab2:
 with tab3:
     st.header("Planifiés par Shift (Début de journée)")
     if current_planning is not None:
-        col_f1, col_f2 = st.columns(2)
+        col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1: sel_trans_p3 = st.multiselect("Transport (OUI/NON)", sorted(current_planning['TRANSPORT'].astype(str).unique().tolist()), key="f3_trans")
         with col_f2: sel_projet_p3 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f3_projet")
+        with col_f3: sel_statut_p3 = st.multiselect("Filtrer par Statut", sorted(current_planning['Statut'].astype(str).unique().tolist()), key="f3_statut")
         
         planning_shifts = current_planning.copy()
         if sel_trans_p3: planning_shifts = planning_shifts[planning_shifts['TRANSPORT'].astype(str).isin(sel_trans_p3)]
         if sel_projet_p3: planning_shifts = planning_shifts[planning_shifts['Projet'].astype(str).isin(sel_projet_p3)]
+        if sel_statut_p3: planning_shifts = planning_shifts[planning_shifts['Statut'].astype(str).isin(sel_statut_p3)]
             
         st.markdown("---")
         with st.spinner("Calcul des shifts en cours..."):
@@ -491,21 +494,25 @@ with tab3:
 
 # --- PAGE 4 : PLANIFIES PAR CRENEAU ---
 with tab4:
-    st.header("Nombre de planifiés par créneau horaire")
+    st.header("Pic de présence et créneaux horaires")
     if current_planning is not None:
         col_f1, col_f2 = st.columns(2)
-        with col_f1: sel_workday_p4 = st.multiselect("Workday ID", sorted(current_planning['WORKDAY ID'].astype(str).unique().tolist()), key="f4_workday")
-        with col_f2: sel_projet_p4 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f4_projet")
+        with col_f1: sel_projet_p4 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f4_projet")
+        with col_f2: sel_statut_p4 = st.multiselect("Filtrer par Statut", sorted(current_planning['Statut'].astype(str).unique().tolist()), key="f4_statut")
         
         planning_slots = current_planning.copy()
-        if sel_workday_p4: planning_slots = planning_slots[planning_slots['WORKDAY ID'].astype(str).isin(sel_workday_p4)]
         if sel_projet_p4: planning_slots = planning_slots[planning_slots['Projet'].astype(str).isin(sel_projet_p4)]
+        if sel_statut_p4: planning_slots = planning_slots[planning_slots['Statut'].astype(str).isin(sel_statut_p4)]
             
         st.markdown("---")
         with st.spinner("Calcul des créneaux horaires en cours..."):
             hours = [f"{h:02d}:00" for h in range(24)]
             pivot_slots = pd.DataFrame(0, index=hours, columns=jours)
+            project_hourly = {}
             for _, row in planning_slots.iterrows():
+                projet = row['Projet']
+                if projet not in project_hourly:
+                    project_hourly[projet] = {j: {h: 0 for h in range(24)} for j in jours}
                 for day_idx, j in enumerate(jours):
                     de_col = f'{j}_DE'; a_col = f'{j}_A'; pause_col = f'{j}_Pause'
                     if de_col in row and a_col in row:
@@ -513,12 +520,40 @@ with tab4:
                         slots = calculate_slots(de, a, pause)
                         for offset, hour in slots:
                             target_day = (day_idx + offset) % 7
-                            pivot_slots.loc[f"{hour:02d}:00", jours[target_day]] += 1
+                            target_day_name = jours[target_day]
+                            pivot_slots.loc[f"{hour:02d}:00", target_day_name] += 1
+                            project_hourly[projet][target_day_name][hour] += 1
+                            
             pivot_slots['Total Jour'] = pivot_slots.sum(axis=1)
             pivot_slots.loc['Total par Créneau'] = pivot_slots.sum(axis=0)
             
-        st.download_button("📥 Télécharger les créneaux (Filtré)", data=to_excel(pivot_slots.reset_index()), file_name="creneaux_horaires.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.dataframe(pivot_slots.style.format("{:.0f}"), use_container_width=True, height=700)
+            # Calcul du DataFrame des Pics
+            peak_data = []
+            for proj, day_data in project_hourly.items():
+                row_data = {'Projet': proj}
+                for j in jours:
+                    row_data[j] = max(day_data[j].values()) if day_data[j].values() else 0
+                peak_data.append(row_data)
+            df_peaks = pd.DataFrame(peak_data).set_index('Projet')
+            
+            # Ajout de la ligne Pic Global (Somme simple des pics de chaque projet)
+            global_peaks = df_peaks[jours].sum().to_dict()
+            df_peaks.loc['Pic Global (Tous Projets)'] = global_peaks
+            
+        # 1. AFFICHAGE DU PIC EN PREMIER PLAN
+        st.markdown("#### 📊 Pic de présence par projet et par jour")
+        st.write("Ce tableau indique le nombre maximum de personnes présentes simultanément (en overlapping de shifts).")
+        st.dataframe(df_peaks.style.format("{:.0f}"), use_container_width=True)
+        
+        excel_peaks = to_excel(df_peaks.reset_index())
+        st.download_button("📥 Télécharger le Pic de présence", data=excel_peaks, file_name="pic_presence.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        
+        # 2. AFFICHAGE DU TABLEAU DÉTAILLÉ EN SECOND PLAN (DANS UN EXPANDER)
+        st.markdown("---")
+        with st.expander("🕒 Voir le détail complet par créneau horaire"):
+            excel_data = to_excel(pivot_slots.reset_index())
+            st.download_button("📥 Télécharger les créneaux détaillés", data=excel_data, file_name="creneaux_horaires.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.dataframe(pivot_slots.style.format("{:.0f}"), use_container_width=True, height=700)
     else:
         st.warning("Aucune donnée disponible. Importez un planning.")
 
