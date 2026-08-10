@@ -12,24 +12,17 @@ st.set_page_config(page_title="LogiPlan", layout="wide")
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
 <style>
-    /* 1. Réduire les espaces et la police */
     .stApp, .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
-    html, body, .stApp {
-        font-size: 14px;
-    }
-    
-    /* 2. Titre principal */
+    html, body, .stApp { font-size: 14px; }
     h1 {
         color: #25E2CC !important;
         font-weight: 600;
         padding-bottom: 10px;
         border-bottom: 2px solid #003D5B;
     }
-    
-    /* 3. Menu latéral (Midnight) - Réduit et éclairci */
     section[data-testid="stSidebar"] {
         background-color: #002032;
         width: 260px !important; 
@@ -49,11 +42,7 @@ custom_css = """
         color: #A8F3EB !important; 
         font-size: 15px !important;
     }
-    
-    /* 4. Onglets transformés en KPI Cards */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 15px;
-    }
+    .stTabs [data-baseweb="tab-list"] { gap: 15px; }
     .stTabs [data-baseweb="tab"] {
         background-color: #FFFFFF;
         color: #2A2B2C;
@@ -74,14 +63,8 @@ custom_css = """
         color: #FFFFFF !important;
         box-shadow: 0 4px 12px rgba(0, 115, 128, 0.3);
     }
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: transparent !important;
-    }
-    .stTabs [data-baseweb="tab-border-bottom"] {
-        display: none;
-    }
-    
-    /* 5. Boutons d'action (Forme Pilule / Formée) */
+    .stTabs [data-baseweb="tab-highlight"] { background-color: transparent !important; }
+    .stTabs [data-baseweb="tab-border-bottom"] { display: none; }
     div.stButton > button {
         background-color: #003D5B; 
         color: #FFFFFF;
@@ -98,8 +81,6 @@ custom_css = """
         border-color: #FBCA18;
         transform: translateY(-2px); 
     }
-    
-    /* 6. Boutons de téléchargement (Turquoise) */
     .stDownloadButton > button {
         background-color: #25E2CC !important;
         color: #002032 !important;
@@ -112,18 +93,11 @@ custom_css = """
         color: #FFFFFF !important;
         border-color: #007380 !important;
     }
-    
-    /* 7. Alertes */
-    .stAlert [data-testid="stAlertContent"] {
-        border-left: 5px solid #25E2CC;
-    }
-    
-    /* 8. Chiffres clés (st.metric) */
+    .stAlert [data-testid="stAlertContent"] { border-left: 5px solid #25E2CC; }
     [data-testid="stMetricValue"] {
         color: #007380;
         font-weight: bold;
     }
-    /* 9. Signature fixée en bas à gauche */
     .footer-fix {
         position: fixed !important;
         left: 0 !important;
@@ -172,8 +146,7 @@ def to_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Data')
-    processed_data = output.getvalue()
-    return processed_data
+    return output.getvalue()
 
 def is_planned(val):
     if pd.isna(val) or isinstance(val, bool): return False
@@ -220,8 +193,7 @@ def get_pause_start(val):
     if isinstance(val, datetime.time): return val
     if isinstance(val, (datetime.datetime, pd.Timestamp)): return val.time()
     val_str = str(val).strip()
-    if '-' in val_str:
-        val_str = val_str.split('-')[0].strip()
+    if '-' in val_str: val_str = val_str.split('-')[0].strip()
     try:
         dt = pd.to_datetime(val_str, errors='coerce')
         if not pd.isna(dt): return dt.time()
@@ -251,16 +223,12 @@ def calculate_slots(de, a, pause_start):
     slots = []
     de_h = de.hour
     a_h = a.hour
-    if a.minute > 0 or a.second > 0:
-        a_h += 1
+    if a.minute > 0 or a.second > 0: a_h += 1
     if a <= de:
-        for h in range(de_h, 24):
-            slots.append((0, h))
-        for h in range(0, a_h):
-            slots.append((1, h))
+        for h in range(de_h, 24): slots.append((0, h))
+        for h in range(0, a_h): slots.append((1, h))
     else:
-        for h in range(de_h, a_h):
-            slots.append((0, h))
+        for h in range(de_h, a_h): slots.append((0, h))
     if pause_start:
         pause_h = pause_start.hour
         slots = [s for s in slots if s[1] != pause_h]
@@ -289,7 +257,6 @@ def parse_planning(files):
             df.columns = new_cols
             
         elif "TMM" in xls.sheet_names:
-            # Détection automatique de la position de la colonne "Transport"
             df_head = pd.read_excel(file, sheet_name="TMM", header=None, nrows=10, engine=engine)
             header_row_idx = None
             trans_col_idx = 0
@@ -304,8 +271,6 @@ def parse_planning(files):
             if header_row_idx is not None:
                 df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=header_row_idx + 1, engine=engine)
                 offset = trans_col_idx
-                
-                # Les colonnes sont calculées dynamiquement en fonction de l'offset
                 cols = [0 + offset, 4 + offset, 2 + offset, 5 + offset, 8 + offset, 10 + offset, 11 + offset, 12 + offset, 13 + offset, 17 + offset, 18 + offset, 19 + offset, 23 + offset, 24 + offset, 25 + offset, 29 + offset, 30 + offset, 31 + offset, 35 + offset, 36 + offset, 37 + offset, 41 + offset, 42 + offset, 43 + offset, 47 + offset, 48 + offset, 49 + offset]
                 new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut', 
                             'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause', 
@@ -315,19 +280,22 @@ def parse_planning(files):
                 df = df.iloc[:, cols]
                 df.columns = new_cols
             else:
-                continue # Si on ne trouve pas l'en-tête, on passe au fichier suivant
-                
+                continue
         else: 
             continue
             
+        df['WORKDAY ID'] = df['WORKDAY ID'].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
         df['Paid ID'] = df['Paid ID'].astype(str).str.replace(" ", "").str.upper()
-        df = df[df['Paid ID'].str.contains(r'\d', na=False)]
+        
+        df = df[df['WORKDAY ID'].str.contains(r'[A-Z0-9]', na=False)]
+        df = df[~df['WORKDAY ID'].isin(['NAN', 'NONE', '*', ''])]
+        
         for j in jours:
             df[f'{j}_Flag'] = df[f'{j}_DE'].apply(lambda x: 1 if is_planned(x) else 0)
         all_planning.append(df)
         
     if all_planning: 
-        return pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['Paid ID'])
+        return pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['WORKDAY ID'])
     return pd.DataFrame()
 
 def parse_commande(file):
@@ -362,11 +330,8 @@ with tab1:
                 st.session_state.planning_data = parse_planning(files_planning)
                 st.session_state.commande_data = parse_commande(file_commande) if file_commande else None
                 st.session_state.show_p1 = True
-                st.session_state.show_p2 = False
-                st.session_state.show_p3_slots = False
-                st.session_state.show_p4_conf = False
-                st.session_state.show_p5_menus = False
-                st.session_state.show_p6_anom = False
+                for var in ['show_p2', 'show_p3_slots', 'show_p4_conf', 'show_p5_menus', 'show_p6_anom']:
+                    st.session_state[var] = False
             st.success("Données chargées avec succès !")
         else:
             st.error("Veuillez importer au moins un fichier de Planning dans le menu de gauche.")
@@ -380,25 +345,29 @@ with tab1:
                 if col in display_planning.columns:
                     display_planning[col] = display_planning[col].apply(format_time_display)
         
-        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+        col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
         with col_f1:
             opts_trans = sorted(display_planning['TRANSPORT'].astype(str).unique().tolist())
             sel_trans = st.multiselect("Transport", opts_trans, default=[], key="f1_trans")
         with col_f2:
+            opts_workday = sorted(display_planning['WORKDAY ID'].astype(str).unique().tolist())
+            sel_workday = st.multiselect("Workday ID", opts_workday, default=[], key="f1_workday")
+        with col_f3:
             opts_paid = sorted(display_planning['Paid ID'].astype(str).unique().tolist())
             sel_paid = st.multiselect("Paid ID", opts_paid, default=[], key="f1_paid")
-        with col_f3:
+        with col_f4:
             opts_nom = sorted(display_planning['Nom'].astype(str).unique().tolist())
             sel_nom = st.multiselect("Nom", opts_nom, default=[], key="f1_nom")
-        with col_f4:
+        with col_f5:
             opts_projet = sorted(display_planning['Projet'].astype(str).unique().tolist())
             sel_projet = st.multiselect("Projet", opts_projet, default=[], key="f1_projet")
-        with col_f5:
+        with col_f6:
             opts_statut = sorted(display_planning['Statut'].astype(str).unique().tolist())
             sel_statut = st.multiselect("Statut", opts_statut, default=[], key="f1_statut")
             
         df_filtered = display_planning.copy()
         if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
+        if sel_workday: df_filtered = df_filtered[df_filtered['WORKDAY ID'].astype(str).isin(sel_workday)]
         if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
         if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
         if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
@@ -423,12 +392,17 @@ with tab2:
             
     if st.session_state.show_p2 and st.session_state.planning_data is not None:
         st.markdown("---")
-        opts_projet_p2 = sorted(st.session_state.planning_data['Projet'].astype(str).unique().tolist())
-        sel_projet_p2 = st.multiselect("Filtrer par Projet", opts_projet_p2, default=[], key="f2_projet")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            opts_workday_p2 = sorted(st.session_state.planning_data['WORKDAY ID'].astype(str).unique().tolist())
+            sel_workday_p2 = st.multiselect("Workday ID", opts_workday_p2, default=[], key="f2_workday")
+        with col_f2:
+            opts_projet_p2 = sorted(st.session_state.planning_data['Projet'].astype(str).unique().tolist())
+            sel_projet_p2 = st.multiselect("Filtrer par Projet", opts_projet_p2, default=[], key="f2_projet")
         
         planning_calc = st.session_state.planning_data.copy()
-        if sel_projet_p2:
-            planning_calc = planning_calc[planning_calc['Projet'].astype(str).isin(sel_projet_p2)]
+        if sel_workday_p2: planning_calc = planning_calc[planning_calc['WORKDAY ID'].astype(str).isin(sel_workday_p2)]
+        if sel_projet_p2: planning_calc = planning_calc[planning_calc['Projet'].astype(str).isin(sel_projet_p2)]
         
         st.markdown("---")
         pivot_df = planning_calc.pivot_table(index='Projet', values=[f'{j}_Flag' for j in jours], aggfunc='sum', fill_value=0)
@@ -460,12 +434,17 @@ with tab3:
             
     if st.session_state.show_p3_slots and st.session_state.planning_data is not None:
         st.markdown("---")
-        opts_projet_p3 = sorted(st.session_state.planning_data['Projet'].astype(str).unique().tolist())
-        sel_projet_p3 = st.multiselect("Filtrer par Projet", opts_projet_p3, default=[], key="f3_projet")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            opts_workday_p3 = sorted(st.session_state.planning_data['WORKDAY ID'].astype(str).unique().tolist())
+            sel_workday_p3 = st.multiselect("Workday ID", opts_workday_p3, default=[], key="f3_workday")
+        with col_f2:
+            opts_projet_p3 = sorted(st.session_state.planning_data['Projet'].astype(str).unique().tolist())
+            sel_projet_p3 = st.multiselect("Filtrer par Projet", opts_projet_p3, default=[], key="f3_projet")
         
         planning_slots = st.session_state.planning_data.copy()
-        if sel_projet_p3:
-            planning_slots = planning_slots[planning_slots['Projet'].astype(str).isin(sel_projet_p3)]
+        if sel_workday_p3: planning_slots = planning_slots[planning_slots['WORKDAY ID'].astype(str).isin(sel_workday_p3)]
+        if sel_projet_p3: planning_slots = planning_slots[planning_slots['Projet'].astype(str).isin(sel_projet_p3)]
             
         st.markdown("---")
         with st.spinner("Calcul des créneaux horaires en cours..."):
@@ -500,8 +479,6 @@ with tab4:
     st.header("↔️ Confrontation Planning & Commandes")
     if st.button("↔️ Générer la confrontation", key="btn_p4_conf"):
         if st.session_state.planning_data is not None:
-            
-            # --- VÉRIFICATION DINAMIQUE DU FICHIER COMMANDE ---
             if st.session_state.commande_data is None and file_commande is not None:
                 with st.spinner("Traitement du fichier Commandes..."):
                     st.session_state.commande_data = parse_commande(file_commande)
@@ -513,8 +490,8 @@ with tab4:
                     for _, row in merged.iterrows():
                         has_planning = not pd.isna(row.get('Nom', np.nan))
                         display_row = {
+                            'Workday ID': row['WORKDAY ID'] if has_planning else "",
                             'Paid ID': row['Paid ID'],
-                            'WORKDAY ID': row['WORKDAY ID'] if has_planning else "",
                             'Nom': row['Nom'] if has_planning else "",
                             'Projet': row['Projet'] if has_planning else "",
                             'Statut': row['Statut'] if has_planning else ""
@@ -572,12 +549,8 @@ with tab4:
 with tab5:
     st.header("Nombre de commandes par menu et par jour")
     if st.button("🍽️ Calculer les commandes par menu", key="btn_p5_menus"):
-        
-        # --- VÉRIFICATION DINAMIQUE DU FICHIER COMMANDE ---
         if st.session_state.commande_data is None and file_commande is not None:
-            with st.spinner("Traitement du fichier Commandes..."):
-                st.session_state.commande_data = parse_commande(file_commande)
-                
+            st.session_state.commande_data = parse_commande(file_commande)
         if st.session_state.commande_data is not None:
             with st.spinner("Calcul des menus en cours..."):
                 cmd_data = st.session_state.commande_data.copy()
@@ -641,7 +614,6 @@ with tab6:
             
     if st.session_state.show_p6_anom:
         st.markdown("---")
-        
         if st.session_state.anomalies_df.empty:
             st.success("✅ Aucune anomalie : tous les planifiés ont une commande et inversement.")
         else:
@@ -672,7 +644,7 @@ with tab6:
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
     "<div class='footer-fix'>"
-    "Powered by <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span>"
+    "Powered By <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span>"
     "</div>", 
     unsafe_allow_html=True
 )
