@@ -55,6 +55,7 @@ st.title("📊 LogiPlan")
 st.sidebar.header("1. Importation des fichiers")
 files_planning = st.sidebar.file_uploader("Fichiers Planning (Obligatoire)", type=['xlsx', 'xls', 'xlsb'], accept_multiple_files=True)
 file_commande = st.sidebar.file_uploader("Fichier Commandes (Optionnel)", type=['xlsx'])
+file_reference = st.sidebar.file_uploader("Fichier Liste Actif (Optionnel)", type=['xlsx'])
 
 st.sidebar.header("2. Paramètres d'absentéisme")
 taux_absenteisme = st.sidebar.slider("Estimation de l'absentéisme (%)", 0, 30, 5)
@@ -312,6 +313,55 @@ def parse_commande(file, jours):
     df = df[df['Paid ID'].str.contains(r'[A-Z]-?\d', na=False)]
     return df
 
+def parse_reference(file):
+    """Lit le fichier Liste Actif et retourne un mapping Workday ID -> Paid ID"""
+    try:
+        df = pd.read_excel(file)
+        # Nettoyage ultra-agressif : supprime TOUS les espaces (visibles et invisibles) et met en majuscule
+        cols_cleaned = []
+        for c in df.columns:
+            c_str = str(c).upper()
+            c_str = "".join(c_str.split()) # Supprime tous les espaces, y compris les insécables
+            cols_cleaned.append(c_str)
+        df.columns = cols_cleaned
+    except Exception as e:
+        return None
+        
+    wd_col = None
+    pd_col = None
+    
+    # Les colonnes sont maintenant nettoyées, par exemple "EMPLOYEEID", "PREVIOUSPAYROLLID"
+    for c in df.columns:
+        if 'WORKDAY' in c or 'EMPLOYEEID' in c: wd_col = c
+        if 'PAYROLLID' in c or 'PAIDID' in c or 'MATRICULEPAIE' in c: pd_col = c
+            
+    if wd_col is None or pd_col is None:
+        return {'error': True, 'columns': list(df.columns)}
+        
+    df = df[[wd_col, pd_col]].copy()
+    df[wd_col] = df[wd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
+    df[pd_col] = df[pd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
+    
+    df = df.dropna(subset=[wd_col])
+    df = df[df[wd_col].str.contains(r'[A-Z0-9]', na=False)]
+    df = df[~df[wd_col].isin(['NAN', 'NONE', '*', ''])]
+    df = df.drop_duplicates(subset=[wd_col])
+    
+    return df.rename(columns={wd_col: 'WORKDAY ID', pd_col: 'REF_PAID_ID'})
+
+# --- GESTION DU FICHIER DE RÉFÉRENCE ---
+if 'reference_data' not in st.session_state:
+    st.session_state.reference_data = None
+
+if file_reference is not None:
+    ref_parsed = parse_reference(file_reference)
+    if isinstance(ref_parsed, dict) and ref_parsed.get('error'):
+        st.session_state.reference_data = None
+        st.session_state.ref_error = ref_parsed.get('columns', [])
+    elif ref_parsed is not None:
+        st.session_state.reference_data = ref_parsed
+        st.session_state.ref_error = None
+
 # --- AFFICHAGE DES ONGLETS ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📄 1. Regroupement Planning", 
@@ -494,7 +544,7 @@ with tab3:
 
 # --- PAGE 4 : PLANIFIES PAR CRENEAU ---
 with tab4:
-    st.header("Poz par projet")
+    st.header("Prevpoz et staffing par créneaux horaires")
     if current_planning is not None:
         col_f1, col_f2 = st.columns(2)
         with col_f1: sel_projet_p4 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f4_projet")
@@ -541,7 +591,7 @@ with tab4:
             df_peaks.loc['Pic Global (Tous Projets)'] = global_peaks
             
         # 1. AFFICHAGE DU PIC EN PREMIER PLAN
-        st.markdown("#### 📊 Poz par projet")
+        st.markdown("#### 📊 Prevpoz et staffing par créneaux horaires")
         st.write("Ce tableau indique le nombre maximum de personnes présentes simultanément (en overlapping de shifts).")
         st.dataframe(df_peaks.style.format("{:.0f}"), use_container_width=True)
         
@@ -682,7 +732,7 @@ with tab7:
     if anom_df is not None:
         st.markdown("---")
         if anom_df.empty:
-            st.success("✅ Aucune anomalie.")
+            st.success("✅ Aucune anomalie commande.")
         else:
             df_anom = anom_df.copy()
             df_anom = df_anom.sort_values(by=["Type d'anomalie", "Jour", "Nom"])
@@ -695,10 +745,51 @@ with tab7:
             if sel_nom: df_filtered_anom = df_filtered_anom[df_filtered_anom['Nom'].astype(str).isin(sel_nom)]
             if sel_projet: df_filtered_anom = df_filtered_anom[df_filtered_anom['Projet'].astype(str).isin(sel_projet)]
             st.markdown("---")
-            st.download_button("📥 Télécharger les anomalies (Filtré)", data=to_excel(df_filtered_anom), file_name="anomalies.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("📥 Télécharger les anomalies commande (Filtré)", data=to_excel(df_filtered_anom), file_name="anomalies_commande.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             st.dataframe(df_filtered_anom, use_container_width=True, height=600)
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
+
+    # --- VÉRIFICATION DES MATRICULES (EN 2e PLAN) ---
+    st.markdown("---")
+    with st.expander("🆔 Vérification des Matricules Paie (Workday vs Liste Actif)"):
+        if current_planning is None:
+            st.warning("Veuillez d'abord charger une semaine de planning sur la Page 1 pour comparer les matricules.")
+        elif st.session_state.get('ref_error'):
+            st.error("Le fichier Liste Actif a été importé, mais les colonnes 'Employee ID' et 'Previous Payroll ID' n'ont pas été trouvées.")
+            st.write("**Colonnes détectées dans votre fichier par l'outil :**")
+            st.write(st.session_state.ref_error)
+            st.info("Astuce : Vérifiez que la première ligne de votre fichier Excel contient bien ces en-têtes exacts. S'il y a une ligne vide au-dessus, supprimez-la.")
+        elif st.session_state.reference_data is None:
+            if file_reference is None:
+                st.info("Veuillez importer le fichier 'Liste Actif' dans le menu de gauche pour activer cette vérification.")
+        else:
+            ref_df = st.session_state.reference_data
+            # Fusionner le planning avec la liste actif
+            check_df = pd.merge(current_planning[['WORKDAY ID', 'Paid ID', 'Nom', 'Projet']], 
+                                ref_df[['WORKDAY ID', 'REF_PAID_ID']], 
+                                on='WORKDAY ID', how='left')
+            
+            # 1. Matricules différents
+            mismatch_df = check_df[(check_df['REF_PAID_ID'].notna()) & 
+                                   (check_df['Paid ID'].astype(str) != check_df['REF_PAID_ID'].astype(str))]
+            
+            # 2. Matricules Workday non trouvés dans la liste actif
+            not_found_df = check_df[check_df['REF_PAID_ID'].isna()]
+            
+            if not mismatch_df.empty:
+                st.warning(f"⚠️ {len(mismatch_df)} collaborateurs ont un matricule paie différent dans le planning par rapport à la Liste Actif.")
+                st.dataframe(mismatch_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID', 'REF_PAID_ID']], use_container_width=True)
+                excel_mismatch = to_excel(mismatch_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID', 'REF_PAID_ID']])
+                st.download_button("📥 Télécharger les matricules erronés", data=excel_mismatch, file_name="matricules_errones.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            else:
+                st.success("✅ Tous les matricules paie présents dans la Liste Actif correspondent au planning.")
+                
+            if not not_found_df.empty:
+                st.markdown("---")
+                st.info(f"ℹ️ {len(not_found_df)} collaborateurs du planning sont introuvables dans la Liste Actif.")
+                with st.expander("Voir les collaborateurs introuvables"):
+                    st.dataframe(not_found_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID']], use_container_width=True)
 
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
