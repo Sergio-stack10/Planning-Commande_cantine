@@ -125,6 +125,13 @@ st.sidebar.header("2. Paramètres d'absentéisme")
 taux_absenteisme = st.sidebar.slider("Estimation de l'absentéisme (%)", 0, 30, 5)
 
 jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+COLONNES_OBLIGATOIRES = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
+
+def planning_valide(df):
+    """Vrai si df est un DataFrame exploitable contenant les colonnes minimales."""
+    return (isinstance(df, pd.DataFrame)
+            and not df.empty
+            and all(c in df.columns for c in COLONNES_OBLIGATOIRES))
 
 # --- SYSTÈME D'HISTORIQUE PERSISTANT ---
 HISTORY_FILE = "planning_history.pkl"
@@ -147,9 +154,10 @@ def save_history():
 
 if 'history_plannings' not in st.session_state:
     loaded = load_history()
-    st.session_state.history_plannings = loaded.get('plannings', {})
-    st.session_state.history_commandes = loaded.get('commandes', {})
-    st.session_state.history_calculs = loaded.get('calculs', {})
+    # On écarte les semaines sauvegardées avec une structure invalide (anciennes versions)
+    st.session_state.history_plannings = {k: v for k, v in loaded.get('plannings', {}).items() if planning_valide(v)}
+    st.session_state.history_commandes = {k: v for k, v in loaded.get('commandes', {}).items() if k in st.session_state.history_plannings}
+    st.session_state.history_calculs = {k: v for k, v in loaded.get('calculs', {}).items() if k in st.session_state.history_plannings}
     
 if 'current_week' not in st.session_state:
     st.session_state.current_week = None
@@ -159,7 +167,9 @@ st.sidebar.header("3. Historique des Semaines")
 available_weeks = list(st.session_state.history_plannings.keys())
 if available_weeks:
     available_weeks.sort()
-    st.session_state.current_week = st.sidebar.selectbox("Semaine à afficher", available_weeks, key="week_selector")
+    # 👇 LIGNE MODIFIÉE : on garde la semaine affichée si elle existe encore, sinon la plus récente
+    idx_defaut = available_weeks.index(st.session_state.current_week) if st.session_state.current_week in available_weeks else len(available_weeks) - 1
+    st.session_state.current_week = st.sidebar.selectbox("Semaine à afficher", available_weeks, index=idx_defaut, key="week_selector")
     if st.sidebar.button("🗑️ Supprimer cette semaine"):
         del st.session_state.history_plannings[st.session_state.current_week]
         if st.session_state.current_week in st.session_state.history_commandes:
@@ -173,6 +183,39 @@ if available_weeks:
 else:
     st.session_state.current_week = None
     st.sidebar.info("Aucune semaine chargée. Importez un fichier planning.")
+
+# 👇 NOUVEAU BLOC : bouton de purge complète (juste après le else ci-dessus, aligné à gauche sans indentation)
+st.sidebar.markdown("---")
+if st.sidebar.button("🧹 Réinitialiser tout l'historique"):
+    st.session_state.history_plannings = {}
+    st.session_state.history_commandes = {}
+    st.session_state.history_calculs = {}
+    if "entity_mapping_by_week" in st.session_state:
+        st.session_state.entity_mapping_by_week = {}
+    st.session_state.current_week = None
+    try:
+        del st.session_state["week_selector"]
+    except Exception:
+        pass
+    if os.path.exists(HISTORY_FILE):
+        try:
+            os.remove(HISTORY_FILE)
+        except Exception:
+            pass
+    st.rerun()
+st.sidebar.markdown("---")
+if st.sidebar.button("🧹 Réinitialiser tout l'historique"):
+    st.session_state.history_plannings = {}
+    st.session_state.history_commandes = {}
+    st.session_state.history_calculs = {}
+    st.session_state.entity_mapping_by_week = {}
+    st.session_state.current_week = None
+    try: del st.session_state["week_selector"]
+    except Exception: pass
+    if os.path.exists(HISTORY_FILE):
+        try: os.remove(HISTORY_FILE)
+        except Exception: pass
+    st.rerun()
 
 def get_current_planning():
     return st.session_state.history_plannings.get(st.session_state.current_week)
@@ -477,48 +520,50 @@ def get_week_number(file, engine):
     return None
 
 def parse_planning(files, jours):
-    all_planning = []
+    all_planning, problemes = [], []
+    new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut',
+                'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause',
+                'Mercredi_DE', 'Mercredi_A', 'Mercredi_Pause', 'Jeudi_DE', 'Jeudi_A', 'Jeudi_Pause',
+                'Vendredi_DE', 'Vendredi_A', 'Vendredi_Pause', 'Samedi_DE', 'Samedi_A', 'Samedi_Pause',
+                'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
     for file in files:
         engine = 'pyxlsb' if file.name.endswith('.xlsb') else None
-        xls = pd.ExcelFile(file, engine=engine)
         df = None
+        try:
+            xls = pd.ExcelFile(file, engine=engine)
+        except Exception as e:
+            problemes.append(f"**{file.name}** : fichier illisible ({e})"); continue
+
         if "Tout (WFO+WFH)" in xls.sheet_names:
-            df = pd.read_excel(file, sheet_name="Tout (WFO+WFH)", header=None, skiprows=3, engine=engine)
-            cols = [3, 4, 5, 6, 7, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 23, 24, 25, 27, 28, 29, 31, 32, 33, 35, 36, 37]
-            new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut', 
-                        'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause', 
-                        'Mercredi_DE', 'Mercredi_A', 'Mercredi_Pause', 'Jeudi_DE', 'Jeudi_A', 'Jeudi_Pause', 
-                        'Vendredi_DE', 'Vendredi_A', 'Vendredi_Pause', 'Samedi_DE', 'Samedi_A', 'Samedi_Pause', 
-                        'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
-            df = df.iloc[:, cols]
-            df.columns = new_cols
-            
+            try:
+                df = pd.read_excel(file, sheet_name="Tout (WFO+WFH)", header=None, skiprows=3, engine=engine)
+                cols = [3, 4, 5, 6, 7, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 23, 24, 25, 27, 28, 29, 31, 32, 33, 35, 36, 37]
+                df = df.iloc[:, cols]; df.columns = new_cols
+            except Exception as e:
+                problemes.append(f"**{file.name}** : feuille « Tout (WFO+WFH) » trouvée mais structure inattendue ({e}).")
+                df = None
         elif "TMM" in xls.sheet_names:
-            df_head = pd.read_excel(file, sheet_name="TMM", header=None, nrows=10, engine=engine)
-            header_row_idx = None
-            trans_col_idx = 0
-            for i in range(len(df_head)):
-                row = df_head.iloc[i].astype(str).str.strip().tolist()
-                if "Transport" in row:
-                    header_row_idx = i
-                    trans_col_idx = row.index("Transport")
-                    break
-            if header_row_idx is not None:
-                df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=header_row_idx + 1, engine=engine)
-                offset = trans_col_idx
-                cols = [0 + offset, 4 + offset, 2 + offset, 5 + offset, 8 + offset, 10 + offset, 11 + offset, 12 + offset, 13 + offset, 17 + offset, 18 + offset, 19 + offset, 23 + offset, 24 + offset, 25 + offset, 29 + offset, 30 + offset, 31 + offset, 35 + offset, 36 + offset, 37 + offset, 41 + offset, 42 + offset, 43 + offset, 47 + offset, 48 + offset, 49 + offset]
-                new_cols = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut', 
-                            'Lundi_DE', 'Lundi_A', 'Lundi_Pause', 'Mardi_DE', 'Mardi_A', 'Mardi_Pause', 
-                            'Mercredi_DE', 'Mercredi_A', 'Mercredi_Pause', 'Jeudi_DE', 'Jeudi_A', 'Jeudi_Pause', 
-                            'Vendredi_DE', 'Vendredi_A', 'Vendredi_Pause', 'Samedi_DE', 'Samedi_A', 'Samedi_Pause', 
-                            'Dimanche_DE', 'Dimanche_A', 'Dimanche_Pause']
-                df = df.iloc[:, cols]
-                df.columns = new_cols
-            else:
-                continue
-        else: 
-            continue
-            
+            try:
+                df_head = pd.read_excel(file, sheet_name="TMM", header=None, nrows=10, engine=engine)
+                header_row_idx, trans_col_idx = None, 0
+                for i in range(len(df_head)):
+                    row = df_head.iloc[i].astype(str).str.strip().tolist()
+                    if "Transport" in row:
+                        header_row_idx, trans_col_idx = i, row.index("Transport"); break
+                if header_row_idx is None:
+                    problemes.append(f"**{file.name}** : feuille « TMM » trouvée mais ligne d'en-tête « Transport » introuvable.")
+                else:
+                    df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=header_row_idx + 1, engine=engine)
+                    o = trans_col_idx
+                    cols = [0+o, 4+o, 2+o, 5+o, 8+o] + [c+o for c in (10,11,12,13,17,18,19,23,24,25,29,30,31,35,36,37,41,42,43,47,48,49)]
+                    df = df.iloc[:, cols]; df.columns = new_cols
+            except Exception as e:
+                problemes.append(f"**{file.name}** : feuille « TMM » illisible ou structure inattendue ({e}).")
+                df = None
+        else:
+            problemes.append(f"**{file.name}** : aucune feuille reconnue (trouvées : {', '.join(xls.sheet_names)}). Attendu : « Tout (WFO+WFH) » ou « TMM ».")
+
+        if df is None: continue
         df['WORKDAY ID'] = df['WORKDAY ID'].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
         df['Paid ID'] = df['Paid ID'].astype(str).str.replace(" ", "").str.upper()
         df = df[df['WORKDAY ID'].str.contains(r'[A-Z0-9]', na=False)]
@@ -526,10 +571,15 @@ def parse_planning(files, jours):
         for j in jours:
             df[f'{j}_Flag'] = df[f'{j}_DE'].apply(lambda x: 1 if is_planned(x) else 0)
         all_planning.append(df)
-        
-    if all_planning: 
-        return pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['WORKDAY ID'])
-    return pd.DataFrame()
+
+    if all_planning:
+        planning = pd.concat(all_planning, ignore_index=True).drop_duplicates(subset=['WORKDAY ID'])
+        manquantes = [c for c in COLONNES_OBLIGATOIRES if c not in planning.columns]
+        if manquantes:
+            problemes.append(f"Colonnes manquantes après lecture : {manquantes}")
+            return pd.DataFrame(), problemes
+        return planning, problemes
+    return pd.DataFrame(), problemes
 
 def parse_commande(file, jours):
     df = pd.read_excel(file)
@@ -635,56 +685,69 @@ with tab1:
             week_num = week_name_input.strip() if week_name_input else default_week_name
             if not week_num:
                 week_num = f"S{datetime.datetime.now().isocalendar().week:02d}"
-                
             with st.spinner("Traitement des fichiers en cours..."):
-                planning_df = parse_planning(files_planning, jours)
-                st.session_state.history_plannings[week_num] = planning_df
-                
-                if file_commande:
-                    cmd_df = parse_commande(file_commande, jours)
-                    st.session_state.history_commandes[week_num] = cmd_df
-                    
-                save_history()
-                st.session_state.current_week = week_num
-            st.success(f"Semaine {week_num} chargée et sauvegardée avec succès !")
-            st.rerun()
+                planning_df, problemes = parse_planning(files_planning, jours)
+                if planning_df.empty:
+                    st.error("❌ Import interrompu : aucun planning exploitable reconnu. **Rien n'a été enregistré.**")
+                    for p in problemes: st.markdown("- " + p)
+                else:
+                    st.session_state.history_plannings[week_num] = planning_df
+                    if file_commande:
+                        try:
+                            st.session_state.history_commandes[week_num] = parse_commande(file_commande, jours)
+                        except Exception as e:
+                            st.warning(f"⚠️ Fichier Commandes illisible ({e}) — l'import du planning continue.")
+                    for p in problemes: st.warning("⚠️ " + p)
+                    save_history()
+                    try: del st.session_state["week_selector"]   # force la sélection sur la nouvelle semaine
+                    except Exception: pass
+                    st.session_state.current_week = week_num
+                    st.success(f"Semaine {week_num} chargée et sauvegardée avec succès !")
+                    st.rerun()
         else:
             st.error("Veuillez importer au moins un fichier de Planning dans le menu de gauche.")
             
-    if st.session_state.current_week and current_planning is not None:
-        st.markdown("---")
-        display_planning = current_planning.copy()
-        for j in jours:
-            for suffix in ['_DE', '_A', '_Pause']:
-                col = f'{j}{suffix}'
-                if col in display_planning.columns:
-                    display_planning[col] = display_planning[col].apply(format_time_display)
-        
-        col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
-        with col_f1: sel_trans = st.multiselect("Transport", sorted(display_planning['TRANSPORT'].astype(str).unique().tolist()), key="f1_trans")
-        with col_f2: sel_workday = st.multiselect("Workday ID", sorted(display_planning['WORKDAY ID'].astype(str).unique().tolist()), key="f1_workday")
-        with col_f3: sel_paid = st.multiselect("Paid ID", sorted(display_planning['Paid ID'].astype(str).unique().tolist()), key="f1_paid")
-        with col_f4: sel_nom = st.multiselect("Nom", sorted(display_planning['Nom'].astype(str).unique().tolist()), key="f1_nom")
-        with col_f5: sel_projet = st.multiselect("Projet", sorted(display_planning['Projet'].astype(str).unique().tolist()), key="f1_projet")
-        with col_f6: sel_statut = st.multiselect("Statut", sorted(display_planning['Statut'].astype(str).unique().tolist()), key="f1_statut")
-            
-        df_filtered = display_planning.copy()
-        if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
-        if sel_workday: df_filtered = df_filtered[df_filtered['WORKDAY ID'].astype(str).isin(sel_workday)]
-        if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
-        if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
-        if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
-        if sel_statut: df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
-        
-        cols_to_show = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
-        for j in jours: cols_to_show += [f'{j}_DE', f'{j}_A', f'{j}_Pause', f'{j}_Flag']
-        
-        st.markdown("---")
-        excel_data = to_excel(df_filtered[cols_to_show])
-        st.download_button("📥 Télécharger le planning regroupé (Filtré)", data=excel_data, file_name="planning_regroupé.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.dataframe(df_filtered[cols_to_show], use_container_width=True, height=600)
-    elif not st.session_state.current_week:
-        st.info("Veuillez importer un fichier pour commencer.")
+if not st.session_state.current_week:
+    st.info("Veuillez importer un fichier pour commencer.")
+elif not planning_valide(current_planning):
+    st.error(f"La semaine « {st.session_state.current_week} » contient des données vides ou incompatibles "
+             f"(colonnes détectées : {list(current_planning.columns) if isinstance(current_planning, pd.DataFrame) else type(current_planning)}).")
+    if st.button("🗑️ Supprimer cette semaine invalide"):
+        st.session_state.history_plannings.pop(st.session_state.current_week, None)
+        st.session_state.history_commandes.pop(st.session_state.current_week, None)
+        st.session_state.history_calculs.pop(st.session_state.current_week, None)
+        save_history(); st.session_state.current_week = None; st.rerun()
+else:
+    st.markdown("---")
+    display_planning = current_planning.copy()
+    for j in jours:
+        for suffix in ['_DE', '_A', '_Pause']:
+            col = f'{j}{suffix}'
+            if col in display_planning.columns:
+                display_planning[col] = display_planning[col].apply(format_time_display)
+
+    col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
+    with col_f1: sel_trans = st.multiselect("Transport", sorted(display_planning['TRANSPORT'].astype(str).unique().tolist()), key="f1_trans")
+    with col_f2: sel_workday = st.multiselect("Workday ID", sorted(display_planning['WORKDAY ID'].astype(str).unique().tolist()), key="f1_workday")
+    with col_f3: sel_paid = st.multiselect("Paid ID", sorted(display_planning['Paid ID'].astype(str).unique().tolist()), key="f1_paid")
+    with col_f4: sel_nom = st.multiselect("Nom", sorted(display_planning['Nom'].astype(str).unique().tolist()), key="f1_nom")
+    with col_f5: sel_projet = st.multiselect("Projet", sorted(display_planning['Projet'].astype(str).unique().tolist()), key="f1_projet")
+    with col_f6: sel_statut = st.multiselect("Statut", sorted(display_planning['Statut'].astype(str).unique().tolist()), key="f1_statut")
+
+    df_filtered = display_planning.copy()
+    if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
+    if sel_workday: df_filtered = df_filtered[df_filtered['WORKDAY ID'].astype(str).isin(sel_workday)]
+    if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
+    if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
+    if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
+    if sel_statut: df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
+
+    cols_to_show = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
+    for j in jours: cols_to_show += [f'{j}_DE', f'{j}_A', f'{j}_Pause', f'{j}_Flag']
+
+    st.markdown("---")
+    st.download_button("📥 Télécharger le planning regroupé (Filtré)", data=to_excel(df_filtered[cols_to_show]), file_name="planning_regroupé.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.dataframe(df_filtered[cols_to_show], use_container_width=True, height=600)
 
 # --- PAGE 2 : EFFECTIFS ---
 with tab2:
@@ -935,7 +998,11 @@ with tab6:
             ids |= set(current_planning["Paid ID"].astype(str))
         prefixes = sorted({get_prefix(i) for i in ids if i and i.strip() and i.upper() not in ("NAN", "NONE")})
 
-        emap = st.session_state.setdefault("entity_mapping_by_week", {}).setdefault(st.session_state.current_week, {})
+        if "entity_mapping_by_week" not in st.session_state:
+                st.session_state.entity_mapping_by_week = {}
+        if st.session_state.current_week not in st.session_state.entity_mapping_by_week:
+                st.session_state.entity_mapping_by_week[st.session_state.current_week] = {}
+        emap = st.session_state.entity_mapping_by_week[st.session_state.current_week]
         seed = build_entity_seed(cmd_use)
         for p in prefixes:
             if p not in emap:
