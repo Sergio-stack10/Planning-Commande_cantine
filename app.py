@@ -16,16 +16,13 @@ st.set_page_config(page_title="LogiPlan", layout="wide")
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
 <style>
-    /* Polices natives modernes (Pour éviter les blocages de sécurité de Streamlit) */
     html, body, .stApp {
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
     }
-    
     .stApp, .block-container { 
         padding-top: 4rem !important; 
         padding-bottom: 2rem !important; 
     }
-    
     h1 { 
         color: #25E2CC !important; 
         font-weight: 700 !important; 
@@ -34,8 +31,6 @@ custom_css = """
         margin-bottom: 30px !important;
     }
     h2, h3 { color: #003D5B !important; font-weight: 600 !important; }
-    
-    /* Onglets arrondis (Pilules) */
     .stTabs [data-baseweb="tab-list"] { gap: 10px !important; }
     .stTabs [data-baseweb="tab"] {
         background-color: transparent !important;
@@ -59,8 +54,6 @@ custom_css = """
     }
     .stTabs [data-baseweb="tab-highlight"] { background-color: transparent !important; }
     .stTabs [data-baseweb="tab-border-bottom"] { display: none !important; }
-    
-    /* Boutons */
     div.stButton > button, .stDownloadButton > button {
         border-radius: 30px !important; font-weight: 600 !important; transition: all 0.3s ease !important;
         border: none !important;
@@ -79,8 +72,6 @@ custom_css = """
     .stDownloadButton > button:hover { 
         background-color: #007380 !important; color: #FFFFFF !important; transform: translateY(-3px);
     }
-    
-    /* Métriques (Style Dashboard) */
     [data-testid="stMetric"] {
         background-color: rgba(128, 128, 128, 0.05);
         border: 1px solid rgba(128, 128, 128, 0.1);
@@ -90,21 +81,15 @@ custom_css = """
     }
     [data-testid="stMetricLabel"] { color: gray !important; font-size: 12px !important; text-transform: uppercase; letter-spacing: 1px; }
     [data-testid="stMetricValue"] { color: #003D5B !important; font-weight: 700 !important; font-size: 24px !important; }
-
-    /* Footer */
     .footer-fix {
         position: fixed !important; left: 0 !important; bottom: 0 !important; width: 100% !important;
         background-color: #001a26 !important; color: #A8F3EB !important; text-align: center !important;
         font-size: 12px !important; padding: 10px !important; z-index: 999999 !important; 
         border-top: 2px solid #25E2CC !important;
     }
-    
-    /* Masquer les logos Streamlit Cloud (SANS toucher au menu 3 points) */
     .stDeployButton { display: none !important; }
     div[class*="_link_"], div[class*="_profilePreview_"], img[data-testid="appCreatorAvatar"], [data-testid="stLogo"] { display: none !important; }
     [data-testid="stHeaderActionElements"] a[href*="github.com"], [data-testid="stHeaderActionElements"] a[href*="streamlit.io"] { display: none !important; }
-
-    /* Bouton sidebar flottant */
     [data-testid="stSidebarCollapseButton"] {
         opacity: 1 !important; background-color: #25E2CC !important; border: none !important; border-radius: 20px !important;
         box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
@@ -125,6 +110,8 @@ st.sidebar.header("2. Paramètres d'absentéisme")
 taux_absenteisme = st.sidebar.slider("Estimation de l'absentéisme (%)", 0, 30, 5)
 
 jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
+# --- VALIDATION DES DONNÉES ---
 COLONNES_OBLIGATOIRES = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
 
 def planning_valide(df):
@@ -158,19 +145,20 @@ if 'history_plannings' not in st.session_state:
     st.session_state.history_plannings = {k: v for k, v in loaded.get('plannings', {}).items() if planning_valide(v)}
     st.session_state.history_commandes = {k: v for k, v in loaded.get('commandes', {}).items() if k in st.session_state.history_plannings}
     st.session_state.history_calculs = {k: v for k, v in loaded.get('calculs', {}).items() if k in st.session_state.history_plannings}
-    
+
 if 'current_week' not in st.session_state:
     st.session_state.current_week = None
 
+# --- SIDEBAR : HISTORIQUE DES SEMAINES ---
 st.sidebar.markdown("---")
 st.sidebar.header("3. Historique des Semaines")
 available_weeks = list(st.session_state.history_plannings.keys())
 if available_weeks:
     available_weeks.sort()
-    # 👇 LIGNE MODIFIÉE : on garde la semaine affichée si elle existe encore, sinon la plus récente
+    # On garde la semaine affichée si elle existe encore, sinon la plus récente
     idx_defaut = available_weeks.index(st.session_state.current_week) if st.session_state.current_week in available_weeks else len(available_weeks) - 1
     st.session_state.current_week = st.sidebar.selectbox("Semaine à afficher", available_weeks, index=idx_defaut, key="week_selector")
-    if st.sidebar.button("🗑️ Supprimer cette semaine"):
+    if st.sidebar.button("🗑️ Supprimer cette semaine", key="btn_del_week"):
         del st.session_state.history_plannings[st.session_state.current_week]
         if st.session_state.current_week in st.session_state.history_commandes:
             del st.session_state.history_commandes[st.session_state.current_week]
@@ -184,9 +172,9 @@ else:
     st.session_state.current_week = None
     st.sidebar.info("Aucune semaine chargée. Importez un fichier planning.")
 
-# 👇 NOUVEAU BLOC : bouton de purge complète (juste après le else ci-dessus, aligné à gauche sans indentation)
+# Bouton de purge complète (UN SEUL exemplaire dans tout le fichier)
 st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Réinitialiser tout l'historique"):
+if st.sidebar.button("🧹 Réinitialiser tout l'historique", key="btn_reset_history"):
     st.session_state.history_plannings = {}
     st.session_state.history_commandes = {}
     st.session_state.history_calculs = {}
@@ -202,19 +190,6 @@ if st.sidebar.button("🧹 Réinitialiser tout l'historique"):
             os.remove(HISTORY_FILE)
         except Exception:
             pass
-    st.rerun()
-st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Réinitialiser tout l'historique"):
-    st.session_state.history_plannings = {}
-    st.session_state.history_commandes = {}
-    st.session_state.history_calculs = {}
-    st.session_state.entity_mapping_by_week = {}
-    st.session_state.current_week = None
-    try: del st.session_state["week_selector"]
-    except Exception: pass
-    if os.path.exists(HISTORY_FILE):
-        try: os.remove(HISTORY_FILE)
-        except Exception: pass
     st.rerun()
 
 def get_current_planning():
@@ -265,7 +240,7 @@ def get_time_obj(val):
     if isinstance(val, datetime.time): return val
     if isinstance(val, (datetime.datetime, pd.Timestamp)): return val.time()
     if isinstance(val, (int, float, np.number)) and not isinstance(val, bool):
-        if 0 < val < 1: 
+        if 0 < val < 1:
             total_seconds = int(val * 86400)
             h = total_seconds // 3600
             m = (total_seconds % 3600) // 60
@@ -374,8 +349,7 @@ def normalize_entity(raw):
     return "AUTRE / IGNORÉ"
 
 def build_entity_seed(cmd_df):
-    """Construit la table Préfixe -> Entité (équivalent colonnes P:Q du Recap).
-       Défaut = valeur la plus fréquente de « Departement » par préfixe + règle SA -> SUPPORT."""
+    """Construit la table Préfixe -> Entité (équivalent colonnes P:Q du Recap)."""
     seed = {}
     if cmd_df is not None and not cmd_df.empty:
         dep_col = next((c for c in cmd_df.columns
@@ -445,7 +419,7 @@ def compute_recap_menus(planning_df, cmd_df, mapping, jours, taux_by_entity, tau
         melted["Menu"] = melted["Brut"].apply(clean_menu_label)
 
     planned_ids = {(j, e): set() for j in jours for e in ENTITES}
-    if planning_df is not None and not planning_df.empty:
+    if planning_df is not None and isinstance(planning_df, pd.DataFrame) and not planning_df.empty:
         p = planning_df.copy()
         p["Paid ID"] = p["Paid ID"].astype(str)
         p = p[~p["Paid ID"].isin(["", "NAN", "NONE", "*"])]
@@ -532,13 +506,15 @@ def parse_planning(files, jours):
         try:
             xls = pd.ExcelFile(file, engine=engine)
         except Exception as e:
-            problemes.append(f"**{file.name}** : fichier illisible ({e})"); continue
+            problemes.append(f"**{file.name}** : fichier illisible ({e})")
+            continue
 
         if "Tout (WFO+WFH)" in xls.sheet_names:
             try:
                 df = pd.read_excel(file, sheet_name="Tout (WFO+WFH)", header=None, skiprows=3, engine=engine)
                 cols = [3, 4, 5, 6, 7, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 23, 24, 25, 27, 28, 29, 31, 32, 33, 35, 36, 37]
-                df = df.iloc[:, cols]; df.columns = new_cols
+                df = df.iloc[:, cols]
+                df.columns = new_cols
             except Exception as e:
                 problemes.append(f"**{file.name}** : feuille « Tout (WFO+WFH) » trouvée mais structure inattendue ({e}).")
                 df = None
@@ -549,21 +525,24 @@ def parse_planning(files, jours):
                 for i in range(len(df_head)):
                     row = df_head.iloc[i].astype(str).str.strip().tolist()
                     if "Transport" in row:
-                        header_row_idx, trans_col_idx = i, row.index("Transport"); break
+                        header_row_idx, trans_col_idx = i, row.index("Transport")
+                        break
                 if header_row_idx is None:
                     problemes.append(f"**{file.name}** : feuille « TMM » trouvée mais ligne d'en-tête « Transport » introuvable.")
                 else:
                     df = pd.read_excel(file, sheet_name="TMM", header=None, skiprows=header_row_idx + 1, engine=engine)
                     o = trans_col_idx
-                    cols = [0+o, 4+o, 2+o, 5+o, 8+o] + [c+o for c in (10,11,12,13,17,18,19,23,24,25,29,30,31,35,36,37,41,42,43,47,48,49)]
-                    df = df.iloc[:, cols]; df.columns = new_cols
+                    cols = [0+o, 4+o, 2+o, 5+o, 8+o] + [c+o for c in (10, 11, 12, 13, 17, 18, 19, 23, 24, 25, 29, 30, 31, 35, 36, 37, 41, 42, 43, 47, 48, 49)]
+                    df = df.iloc[:, cols]
+                    df.columns = new_cols
             except Exception as e:
                 problemes.append(f"**{file.name}** : feuille « TMM » illisible ou structure inattendue ({e}).")
                 df = None
         else:
             problemes.append(f"**{file.name}** : aucune feuille reconnue (trouvées : {', '.join(xls.sheet_names)}). Attendu : « Tout (WFO+WFH) » ou « TMM ».")
 
-        if df is None: continue
+        if df is None:
+            continue
         df['WORKDAY ID'] = df['WORKDAY ID'].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
         df['Paid ID'] = df['Paid ID'].astype(str).str.replace(" ", "").str.upper()
         df = df[df['WORKDAY ID'].str.contains(r'[A-Z0-9]', na=False)]
@@ -607,36 +586,31 @@ def parse_reference(file):
     """Lit le fichier Liste Actif et retourne un mapping Workday ID -> Paid ID"""
     try:
         df = pd.read_excel(file)
-        # Nettoyage ultra-agressif : supprime TOUS les espaces (visibles et invisibles) et met en majuscule
         cols_cleaned = []
         for c in df.columns:
             c_str = str(c).upper()
-            c_str = "".join(c_str.split()) # Supprime tous les espaces, y compris les insécables
+            c_str = "".join(c_str.split())
             cols_cleaned.append(c_str)
         df.columns = cols_cleaned
     except Exception as e:
         return None
-        
+
     wd_col = None
     pd_col = None
-    
-    # Les colonnes sont maintenant nettoyées, par exemple "EMPLOYEEID", "PREVIOUSPAYROLLID"
     for c in df.columns:
         if 'WORKDAY' in c or 'EMPLOYEEID' in c: wd_col = c
         if 'PAYROLLID' in c or 'PAIDID' in c or 'MATRICULEPAIE' in c: pd_col = c
-            
+
     if wd_col is None or pd_col is None:
         return {'error': True, 'columns': list(df.columns)}
-        
+
     df = df[[wd_col, pd_col]].copy()
     df[wd_col] = df[wd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
     df[pd_col] = df[pd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
-    
     df = df.dropna(subset=[wd_col])
     df = df[df[wd_col].str.contains(r'[A-Z0-9]', na=False)]
     df = df[~df[wd_col].isin(['NAN', 'NONE', '*', ''])]
     df = df.drop_duplicates(subset=[wd_col])
-    
     return df.rename(columns={wd_col: 'WORKDAY ID', pd_col: 'REF_PAID_ID'})
 
 # --- GESTION DU FICHIER DE RÉFÉRENCE ---
@@ -654,11 +628,11 @@ if file_reference is not None:
 
 # --- AFFICHAGE DES ONGLETS ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "📄 1. Regroupement Planning", 
-    "📈 2. Effectifs & Prévisions", 
-    "🚌 3. Planifiés par Shift", 
-    "🕒 4. Planifiés par créneau", 
-    "⚠️ 5. Confrontation planning & commande", 
+    "📄 1. Regroupement Planning",
+    "📈 2. Effectifs & Prévisions",
+    "🚌 3. Planifiés par Shift",
+    "🕒 4. Planifiés par créneau",
+    "⚠️ 5. Confrontation planning & commande",
     "🍽️ 6. Commandes par menu",
     "❌ 7. Anomalies"
 ])
@@ -668,7 +642,7 @@ current_planning = get_current_planning()
 # --- PAGE 1 : REGROUPEMENT ---
 with tab1:
     st.header("Regroupement des plannings")
-    
+
     default_week_name = ""
     if files_planning:
         for f in files_planning:
@@ -677,9 +651,9 @@ with tab1:
             if wk:
                 default_week_name = wk
                 break
-                
+
     week_name_input = st.text_input("Nom de la semaine à enregistrer", value=default_week_name, placeholder="Ex: S33, Semaine 34, etc.")
-    
+
     if st.button("🚀 Lancer l'import et le regroupement", key="btn_p1"):
         if files_planning:
             week_num = week_name_input.strip() if week_name_input else default_week_name
@@ -689,7 +663,8 @@ with tab1:
                 planning_df, problemes = parse_planning(files_planning, jours)
                 if planning_df.empty:
                     st.error("❌ Import interrompu : aucun planning exploitable reconnu. **Rien n'a été enregistré.**")
-                    for p in problemes: st.markdown("- " + p)
+                    for p in problemes:
+                        st.markdown("- " + p)
                 else:
                     st.session_state.history_plannings[week_num] = planning_df
                     if file_commande:
@@ -697,62 +672,66 @@ with tab1:
                             st.session_state.history_commandes[week_num] = parse_commande(file_commande, jours)
                         except Exception as e:
                             st.warning(f"⚠️ Fichier Commandes illisible ({e}) — l'import du planning continue.")
-                    for p in problemes: st.warning("⚠️ " + p)
+                    for p in problemes:
+                        st.warning("⚠️ " + p)
                     save_history()
-                    try: del st.session_state["week_selector"]   # force la sélection sur la nouvelle semaine
-                    except Exception: pass
+                    try:
+                        del st.session_state["week_selector"]
+                    except Exception:
+                        pass
                     st.session_state.current_week = week_num
                     st.success(f"Semaine {week_num} chargée et sauvegardée avec succès !")
                     st.rerun()
         else:
             st.error("Veuillez importer au moins un fichier de Planning dans le menu de gauche.")
-            
-if not st.session_state.current_week:
-    st.info("Veuillez importer un fichier pour commencer.")
-elif not planning_valide(current_planning):
-    st.error(f"La semaine « {st.session_state.current_week} » contient des données vides ou incompatibles "
-             f"(colonnes détectées : {list(current_planning.columns) if isinstance(current_planning, pd.DataFrame) else type(current_planning)}).")
-    if st.button("🗑️ Supprimer cette semaine invalide"):
-        st.session_state.history_plannings.pop(st.session_state.current_week, None)
-        st.session_state.history_commandes.pop(st.session_state.current_week, None)
-        st.session_state.history_calculs.pop(st.session_state.current_week, None)
-        save_history(); st.session_state.current_week = None; st.rerun()
-else:
-    st.markdown("---")
-    display_planning = current_planning.copy()
-    for j in jours:
-        for suffix in ['_DE', '_A', '_Pause']:
-            col = f'{j}{suffix}'
-            if col in display_planning.columns:
-                display_planning[col] = display_planning[col].apply(format_time_display)
 
-    col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
-    with col_f1: sel_trans = st.multiselect("Transport", sorted(display_planning['TRANSPORT'].astype(str).unique().tolist()), key="f1_trans")
-    with col_f2: sel_workday = st.multiselect("Workday ID", sorted(display_planning['WORKDAY ID'].astype(str).unique().tolist()), key="f1_workday")
-    with col_f3: sel_paid = st.multiselect("Paid ID", sorted(display_planning['Paid ID'].astype(str).unique().tolist()), key="f1_paid")
-    with col_f4: sel_nom = st.multiselect("Nom", sorted(display_planning['Nom'].astype(str).unique().tolist()), key="f1_nom")
-    with col_f5: sel_projet = st.multiselect("Projet", sorted(display_planning['Projet'].astype(str).unique().tolist()), key="f1_projet")
-    with col_f6: sel_statut = st.multiselect("Statut", sorted(display_planning['Statut'].astype(str).unique().tolist()), key="f1_statut")
+    if not st.session_state.current_week:
+        st.info("Veuillez importer un fichier pour commencer.")
+    elif not planning_valide(current_planning):
+        st.error(f"La semaine « {st.session_state.current_week} » contient des données vides ou incompatibles.")
+        if st.button("🗑️ Supprimer cette semaine invalide", key="btn_del_invalid"):
+            st.session_state.history_plannings.pop(st.session_state.current_week, None)
+            st.session_state.history_commandes.pop(st.session_state.current_week, None)
+            st.session_state.history_calculs.pop(st.session_state.current_week, None)
+            save_history()
+            st.session_state.current_week = None
+            st.rerun()
+    else:
+        st.markdown("---")
+        display_planning = current_planning.copy()
+        for j in jours:
+            for suffix in ['_DE', '_A', '_Pause']:
+                col = f'{j}{suffix}'
+                if col in display_planning.columns:
+                    display_planning[col] = display_planning[col].apply(format_time_display)
 
-    df_filtered = display_planning.copy()
-    if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
-    if sel_workday: df_filtered = df_filtered[df_filtered['WORKDAY ID'].astype(str).isin(sel_workday)]
-    if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
-    if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
-    if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
-    if sel_statut: df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
+        col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
+        with col_f1: sel_trans = st.multiselect("Transport", sorted(display_planning['TRANSPORT'].astype(str).unique().tolist()), key="f1_trans")
+        with col_f2: sel_workday = st.multiselect("Workday ID", sorted(display_planning['WORKDAY ID'].astype(str).unique().tolist()), key="f1_workday")
+        with col_f3: sel_paid = st.multiselect("Paid ID", sorted(display_planning['Paid ID'].astype(str).unique().tolist()), key="f1_paid")
+        with col_f4: sel_nom = st.multiselect("Nom", sorted(display_planning['Nom'].astype(str).unique().tolist()), key="f1_nom")
+        with col_f5: sel_projet = st.multiselect("Projet", sorted(display_planning['Projet'].astype(str).unique().tolist()), key="f1_projet")
+        with col_f6: sel_statut = st.multiselect("Statut", sorted(display_planning['Statut'].astype(str).unique().tolist()), key="f1_statut")
 
-    cols_to_show = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
-    for j in jours: cols_to_show += [f'{j}_DE', f'{j}_A', f'{j}_Pause', f'{j}_Flag']
+        df_filtered = display_planning.copy()
+        if sel_trans: df_filtered = df_filtered[df_filtered['TRANSPORT'].astype(str).isin(sel_trans)]
+        if sel_workday: df_filtered = df_filtered[df_filtered['WORKDAY ID'].astype(str).isin(sel_workday)]
+        if sel_paid: df_filtered = df_filtered[df_filtered['Paid ID'].astype(str).isin(sel_paid)]
+        if sel_nom: df_filtered = df_filtered[df_filtered['Nom'].astype(str).isin(sel_nom)]
+        if sel_projet: df_filtered = df_filtered[df_filtered['Projet'].astype(str).isin(sel_projet)]
+        if sel_statut: df_filtered = df_filtered[df_filtered['Statut'].astype(str).isin(sel_statut)]
 
-    st.markdown("---")
-    st.download_button("📥 Télécharger le planning regroupé (Filtré)", data=to_excel(df_filtered[cols_to_show]), file_name="planning_regroupé.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    st.dataframe(df_filtered[cols_to_show], use_container_width=True, height=600)
+        cols_to_show = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
+        for j in jours: cols_to_show += [f'{j}_DE', f'{j}_A', f'{j}_Pause', f'{j}_Flag']
+
+        st.markdown("---")
+        st.download_button("📥 Télécharger le planning regroupé (Filtré)", data=to_excel(df_filtered[cols_to_show]), file_name="planning_regroupé.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p1")
+        st.dataframe(df_filtered[cols_to_show], use_container_width=True, height=600)
 
 # --- PAGE 2 : EFFECTIFS ---
 with tab2:
     st.header("Nombre de planifiés par projet et par jour")
-    if current_planning is not None:
+    if planning_valide(current_planning):
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             opts_projet_p2 = sorted(current_planning['Projet'].astype(str).unique().tolist())
@@ -760,11 +739,11 @@ with tab2:
         with col_f2:
             opts_statut_p2 = sorted(current_planning['Statut'].astype(str).unique().tolist())
             sel_statut_p2 = st.multiselect("Filtrer par Statut", opts_statut_p2, default=[], key="f2_statut")
-        
+
         planning_calc = current_planning.copy()
         if sel_projet_p2: planning_calc = planning_calc[planning_calc['Projet'].astype(str).isin(sel_projet_p2)]
         if sel_statut_p2: planning_calc = planning_calc[planning_calc['Statut'].astype(str).isin(sel_statut_p2)]
-        
+
         st.markdown("---")
         pivot_df = planning_calc.pivot_table(index='Projet', values=[f'{j}_Flag' for j in jours], aggfunc='sum', fill_value=0)
         pivot_df = pivot_df[[f'{j}_Flag' for j in jours]]
@@ -780,14 +759,14 @@ with tab2:
             with cols_in[i]:
                 val = st.number_input(f"{j}", min_value=0, step=1, value=0, key=f"prest_{j}")
                 prestataires_vals.append(val)
-                
+
         pivot_df.loc['Prestataires (Hors Planning)'] = prestataires_vals
         pivot_df.loc['Total à commander'] = pivot_df.loc[f'Total Estimé (-{taux_absenteisme}%)'] + pivot_df.loc['Prestataires (Hors Planning)']
-        
+
         st.markdown("---")
-        st.download_button("📥 Télécharger les effectifs (Filtré)", data=to_excel(pivot_df.reset_index()), file_name="effectifs.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Télécharger les effectifs (Filtré)", data=to_excel(pivot_df.reset_index()), file_name="effectifs.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p2")
         st.dataframe(pivot_df.style.format("{:.0f}"), use_container_width=True)
-        
+
         st.markdown("---")
         st.subheader(f"📦 Récapitulatif final à commander (Estimé + Prestataires)")
         cols = st.columns(7)
@@ -801,17 +780,17 @@ with tab2:
 # --- PAGE 3 : PLANIFIES PAR SHIFT ---
 with tab3:
     st.header("Planifiés par Shift (Début de journée)")
-    if current_planning is not None:
+    if planning_valide(current_planning):
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1: sel_trans_p3 = st.multiselect("Transport (OUI/NON)", sorted(current_planning['TRANSPORT'].astype(str).unique().tolist()), key="f3_trans")
         with col_f2: sel_projet_p3 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f3_projet")
         with col_f3: sel_statut_p3 = st.multiselect("Filtrer par Statut", sorted(current_planning['Statut'].astype(str).unique().tolist()), key="f3_statut")
-        
+
         planning_shifts = current_planning.copy()
         if sel_trans_p3: planning_shifts = planning_shifts[planning_shifts['TRANSPORT'].astype(str).isin(sel_trans_p3)]
         if sel_projet_p3: planning_shifts = planning_shifts[planning_shifts['Projet'].astype(str).isin(sel_projet_p3)]
         if sel_statut_p3: planning_shifts = planning_shifts[planning_shifts['Statut'].astype(str).isin(sel_statut_p3)]
-            
+
         st.markdown("---")
         with st.spinner("Calcul des shifts en cours..."):
             shift_rows = []
@@ -832,13 +811,13 @@ with tab3:
                 pivot_shifts['Total Semaine'] = pivot_shifts.sum(axis=1)
                 pivot_shifts.loc['Total'] = pivot_shifts.sum()
                 st.markdown("#### 📊 Nombre de personnes par Heure de Début")
-                st.download_button("📥 Télécharger le résumé par Shift", data=to_excel(pivot_shifts.reset_index()), file_name="resume_shifts.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("📥 Télécharger le résumé par Shift", data=to_excel(pivot_shifts.reset_index()), file_name="resume_shifts.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p3")
                 st.dataframe(pivot_shifts.style.format("{:.0f}"), use_container_width=True)
-                
+
                 st.markdown("---")
                 with st.expander("👁️ Voir la liste détaillée des personnes par shift (Cliquez pour dérouler)"):
                     df_detail = df_shifts.sort_values(by=['Jour', 'Shift (Début)', 'Nom'])
-                    st.download_button("📥 Télécharger la liste détaillée", data=to_excel(df_detail), file_name="detail_shifts.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    st.download_button("📥 Télécharger la liste détaillée", data=to_excel(df_detail), file_name="detail_shifts.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p3b")
                     st.dataframe(df_detail, use_container_width=True, height=500)
             else:
                 st.warning("Aucun shift trouvé dans les données filtrées.")
@@ -848,15 +827,15 @@ with tab3:
 # --- PAGE 4 : PLANIFIES PAR CRENEAU ---
 with tab4:
     st.header("Prevpoz et staffing par créneaux horaires")
-    if current_planning is not None:
+    if planning_valide(current_planning):
         col_f1, col_f2 = st.columns(2)
         with col_f1: sel_projet_p4 = st.multiselect("Filtrer par Projet", sorted(current_planning['Projet'].astype(str).unique().tolist()), key="f4_projet")
         with col_f2: sel_statut_p4 = st.multiselect("Filtrer par Statut", sorted(current_planning['Statut'].astype(str).unique().tolist()), key="f4_statut")
-        
+
         planning_slots = current_planning.copy()
         if sel_projet_p4: planning_slots = planning_slots[planning_slots['Projet'].astype(str).isin(sel_projet_p4)]
         if sel_statut_p4: planning_slots = planning_slots[planning_slots['Statut'].astype(str).isin(sel_statut_p4)]
-            
+
         st.markdown("---")
         with st.spinner("Calcul des créneaux horaires en cours..."):
             hours = [f"{h:02d}:00" for h in range(24)]
@@ -876,11 +855,10 @@ with tab4:
                             target_day_name = jours[target_day]
                             pivot_slots.loc[f"{hour:02d}:00", target_day_name] += 1
                             project_hourly[projet][target_day_name][hour] += 1
-                            
+
             pivot_slots['Total Jour'] = pivot_slots.sum(axis=1)
             pivot_slots.loc['Total par Créneau'] = pivot_slots.sum(axis=0)
-            
-            # Calcul du DataFrame des Pics
+
             peak_data = []
             for proj, day_data in project_hourly.items():
                 row_data = {'Projet': proj}
@@ -888,24 +866,19 @@ with tab4:
                     row_data[j] = max(day_data[j].values()) if day_data[j].values() else 0
                 peak_data.append(row_data)
             df_peaks = pd.DataFrame(peak_data).set_index('Projet')
-            
-            # Ajout de la ligne Pic Global (Somme simple des pics de chaque projet)
             global_peaks = df_peaks[jours].sum().to_dict()
             df_peaks.loc['Pic Global (Tous Projets)'] = global_peaks
-            
-        # 1. AFFICHAGE DU PIC EN PREMIER PLAN
+
         st.markdown("#### 📊 Prevpoz et staffing par créneaux horaires")
         st.write("Ce tableau indique le nombre maximum de personnes présentes simultanément (en overlapping de shifts).")
         st.dataframe(df_peaks.style.format("{:.0f}"), use_container_width=True)
-        
+
         excel_peaks = to_excel(df_peaks.reset_index())
-        st.download_button("📥 Télécharger le Pic de présence", data=excel_peaks, file_name="pic_presence.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        
-        # 2. AFFICHAGE DU TABLEAU DÉTAILLÉ EN SECOND PLAN (DANS UN EXPANDER)
+        st.download_button("📥 Télécharger le Pic de présence", data=excel_peaks, file_name="pic_presence.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p4")
         st.markdown("---")
         with st.expander("🕒 Voir le détail complet par créneau horaire"):
             excel_data = to_excel(pivot_slots.reset_index())
-            st.download_button("📥 Télécharger les créneaux détaillés", data=excel_data, file_name="creneaux_horaires.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("📥 Télécharger les créneaux détaillés", data=excel_data, file_name="creneaux_horaires.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p4b")
             st.dataframe(pivot_slots.style.format("{:.0f}"), use_container_width=True, height=700)
     else:
         st.warning("Aucune donnée disponible. Importez un planning.")
@@ -914,9 +887,9 @@ with tab4:
 with tab5:
     st.header("↔️ Confrontation Planning & Commandes")
     current_commande = get_current_commande()
-    
+
     if st.button("↔️ Générer la confrontation", key="btn_p5_conf"):
-        if current_planning is not None:
+        if planning_valide(current_planning):
             if current_commande is None and file_commande is not None:
                 with st.spinner("Traitement du fichier Commandes..."):
                     current_commande = parse_commande(file_commande, jours)
@@ -959,15 +932,15 @@ with tab5:
         with col_f2: sel_nom = st.multiselect("Nom", sorted(conf_df['Nom'].astype(str).unique().tolist()), key="f5_nom")
         with col_f3: sel_projet = st.multiselect("Projet", sorted(conf_df['Projet'].astype(str).unique().tolist()), key="f5_projet")
         with col_f4: sel_statut = st.multiselect("Statut", sorted(conf_df['Statut'].astype(str).unique().tolist()), key="f5_statut")
-            
+
         df_filtered_p5 = conf_df.copy()
         if sel_paid: df_filtered_p5 = df_filtered_p5[df_filtered_p5['Paid ID'].astype(str).isin(sel_paid)]
         if sel_nom: df_filtered_p5 = df_filtered_p5[df_filtered_p5['Nom'].astype(str).isin(sel_nom)]
         if sel_projet: df_filtered_p5 = df_filtered_p5[df_filtered_p5['Projet'].astype(str).isin(sel_projet)]
         if sel_statut: df_filtered_p5 = df_filtered_p5[df_filtered_p5['Statut'].astype(str).isin(sel_statut)]
-        
+
         st.markdown("---")
-        st.download_button("📥 Télécharger la confrontation (Filtré)", data=to_excel(df_filtered_p5), file_name="confrontation.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Télécharger la confrontation (Filtré)", data=to_excel(df_filtered_p5), file_name="confrontation.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p5")
         st.dataframe(df_filtered_p5, use_container_width=True, height=600)
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
@@ -994,15 +967,16 @@ with tab6:
 
         # 2) Table Préfixe -> Entité (équivalent RECHERCHEX)
         ids = set(cmd_use["Paid ID"].astype(str))
-        if current_planning is not None and not current_planning.empty:
+        if planning_valide(current_planning):
             ids |= set(current_planning["Paid ID"].astype(str))
         prefixes = sorted({get_prefix(i) for i in ids if i and i.strip() and i.upper() not in ("NAN", "NONE")})
 
         if "entity_mapping_by_week" not in st.session_state:
-                st.session_state.entity_mapping_by_week = {}
+            st.session_state.entity_mapping_by_week = {}
         if st.session_state.current_week not in st.session_state.entity_mapping_by_week:
-                st.session_state.entity_mapping_by_week[st.session_state.current_week] = {}
+            st.session_state.entity_mapping_by_week[st.session_state.current_week] = {}
         emap = st.session_state.entity_mapping_by_week[st.session_state.current_week]
+
         seed = build_entity_seed(cmd_use)
         for p in prefixes:
             if p not in emap:
@@ -1011,7 +985,7 @@ with tab6:
         with st.expander("🗂️ Correspondance Préfixe matricule → Entité (équivalent formule RECHERCHEX)", expanded=len(prefixes) <= 12):
             st.caption("Règle : 2 premiers caractères = « SA » → SUPPORT + SAI ; sinon recherche du préfixe ci-dessous. "
                        "Défaut proposé depuis la colonne « Departement » du fichier commande, sinon PROD / PLANIFIÉ PROD.")
-            filtre = st.text_input("🔍 Filtrer les préfixes affichés", "").strip().upper()
+            filtre = st.text_input("🔍 Filtrer les préfixes affichés", "", key="filtre_prefixes").strip().upper()
             shown = [p for p in prefixes if filtre in p] if filtre else prefixes
             if len(shown) > 40:
                 st.info(f"{len(shown)} préfixes : seuls les 40 premiers sont affichés, affinez le filtre.")
@@ -1019,11 +993,13 @@ with tab6:
             mcols = st.columns(4)
             for i, p in enumerate(shown):
                 with mcols[i % 4]:
-                    try: cur_idx = ENTITES.index(emap.get(p, "PROD / PLANIFIÉ PROD"))
-                    except ValueError: cur_idx = 2
+                    try:
+                        cur_idx = ENTITES.index(emap.get(p, "PROD / PLANIFIÉ PROD"))
+                    except ValueError:
+                        cur_idx = 2
                     emap[p] = st.selectbox(f"« {p}… »", ENTITES, index=cur_idx, key=f"map_{st.session_state.current_week}_{p}")
 
-        # 3) Taux d'absentéisme par entité (dans votre Excel : 20%, 7%, 14%...)
+        # 3) Taux d'absentéisme par entité
         with st.expander("📉 Taux d'absentéisme appliqué au « A preparer » (par entité)"):
             taux_by_entity = {}
             tcols = st.columns(3)
@@ -1048,7 +1024,8 @@ with tab6:
                                     "Presta. prévus": int(presta_prevus[j]),
                                     "À commander": day_totals[j] + int(presta_prevus[j])} for j in jours])
         total_row = {"Jour": "TOTAL SEMAINE"}
-        for e in ENTITES_MAIN: total_row[e] = int(sum(recap[(j, e)]["total_prep"] for j in jours))
+        for e in ENTITES_MAIN:
+            total_row[e] = int(sum(recap[(j, e)]["total_prep"] for j in jours))
         total_row["Presta. prévus"] = int(sum(presta_prevus.values()))
         total_row["À commander"] = int(sum(day_totals.values()) + sum(presta_prevus.values()))
         summary_df = pd.concat([summary_df, pd.DataFrame([total_row])], ignore_index=True)
@@ -1061,13 +1038,13 @@ with tab6:
                        for j in jours for ent in ENTITES for _, r in recap[(j, ent)]["df"].iterrows()]
         st.download_button("📥 Télécharger le récapitulatif complet (Excel)", data=to_excel(pd.DataFrame(export_rows)),
                            file_name="recap_commandes_menus.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p6")
 
         # 8) Détail par jour (affichage type feuille Recap)
         week_dates = derive_week_dates(st.session_state.current_week)
         mois_fr = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
                    "septembre", "octobre", "novembre", "décembre"]
-        if current_planning is None or current_planning.empty:
+        if not planning_valide(current_planning):
             st.info("ℹ️ Planning non chargé : SANS CHOIX ne contient que les absences déclarées.")
         st.markdown("---")
         st.subheader("🗓️ Détail par jour")
@@ -1127,7 +1104,7 @@ with tab7:
                 set_calc('anom', anom_df)
         else:
             st.error("Veuillez d'abord générer la confrontation sur la Page 5.")
-            
+
     anom_df = get_calc('anom')
     if anom_df is not None:
         st.markdown("---")
@@ -1145,7 +1122,7 @@ with tab7:
             if sel_nom: df_filtered_anom = df_filtered_anom[df_filtered_anom['Nom'].astype(str).isin(sel_nom)]
             if sel_projet: df_filtered_anom = df_filtered_anom[df_filtered_anom['Projet'].astype(str).isin(sel_projet)]
             st.markdown("---")
-            st.download_button("📥 Télécharger les anomalies commande (Filtré)", data=to_excel(df_filtered_anom), file_name="anomalies_commande.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("📥 Télécharger les anomalies commande (Filtré)", data=to_excel(df_filtered_anom), file_name="anomalies_commande.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p7")
             st.dataframe(df_filtered_anom, use_container_width=True, height=600)
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
@@ -1165,26 +1142,22 @@ with tab7:
                 st.info("Veuillez importer le fichier 'Liste Actif' dans le menu de gauche pour activer cette vérification.")
         else:
             ref_df = st.session_state.reference_data
-            # Fusionner le planning avec la liste actif
-            check_df = pd.merge(current_planning[['WORKDAY ID', 'Paid ID', 'Nom', 'Projet']], 
-                                ref_df[['WORKDAY ID', 'REF_PAID_ID']], 
+            check_df = pd.merge(current_planning[['WORKDAY ID', 'Paid ID', 'Nom', 'Projet']],
+                                ref_df[['WORKDAY ID', 'REF_PAID_ID']],
                                 on='WORKDAY ID', how='left')
-            
-            # 1. Matricules différents
-            mismatch_df = check_df[(check_df['REF_PAID_ID'].notna()) & 
+
+            mismatch_df = check_df[(check_df['REF_PAID_ID'].notna()) &
                                    (check_df['Paid ID'].astype(str) != check_df['REF_PAID_ID'].astype(str))]
-            
-            # 2. Matricules Workday non trouvés dans la liste actif
             not_found_df = check_df[check_df['REF_PAID_ID'].isna()]
-            
+
             if not mismatch_df.empty:
                 st.warning(f"⚠️ {len(mismatch_df)} collaborateurs ont un matricule paie différent dans le planning par rapport à la Liste Actif.")
                 st.dataframe(mismatch_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID', 'REF_PAID_ID']], use_container_width=True)
                 excel_mismatch = to_excel(mismatch_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID', 'REF_PAID_ID']])
-                st.download_button("📥 Télécharger les matricules erronés", data=excel_mismatch, file_name="matricules_errones.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("📥 Télécharger les matricules erronés", data=excel_mismatch, file_name="matricules_errones.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p7b")
             else:
                 st.success("✅ Tous les matricules paie présents dans la Liste Actif correspondent au planning.")
-                
+
             if not not_found_df.empty:
                 st.markdown("---")
                 st.info(f"ℹ️ {len(not_found_df)} collaborateurs du planning sont introuvables dans la Liste Actif.")
@@ -1193,6 +1166,6 @@ with tab7:
 
 # --- SIGNATURE FIXEE EN BAS ---
 st.markdown(
-    "<div class='footer-fix'>Powered by <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span></div>", 
+    "<div class='footer-fix'>Powered by <span style='color: #25E2CC; font-weight: 700; letter-spacing: 1px;'>RAVO SERGIO</span></div>",
     unsafe_allow_html=True
 )
