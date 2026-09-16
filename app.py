@@ -5,6 +5,8 @@ import datetime
 import io
 import os
 import pickle
+import re
+import unicodedata
 
 # --- NETTOYAGE DU CACHE ---
 st.cache_data.clear()
@@ -14,38 +16,100 @@ st.set_page_config(page_title="LogiPlan", layout="wide")
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
 <style>
-    .stApp, .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
-    html, body, .stApp { font-size: 14px; }
-    h1 { color: #25E2CC !important; font-weight: 600; padding-bottom: 10px; border-bottom: 2px solid #003D5B; }
-    section[data-testid="stSidebar"] { background-color: #002032; width: 260px !important; }
-    section[data-testid="stSidebar"] > div:first-child { width: 260px !important; padding-top: 20px; }
-    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"], 
-    section[data-testid="stSidebar"] label { font-size: 13px !important; color: #747474 !important; }
-    section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { color: #A8F3EB !important; font-size: 15px !important; }
-    .stTabs [data-baseweb="tab-list"] { gap: 15px; }
+    /* Polices natives modernes (Pour éviter les blocages de sécurité de Streamlit) */
+    html, body, .stApp {
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+    }
+    
+    .stApp, .block-container { 
+        padding-top: 4rem !important; 
+        padding-bottom: 2rem !important; 
+    }
+    
+    h1 { 
+        color: #25E2CC !important; 
+        font-weight: 700 !important; 
+        padding-bottom: 15px !important; 
+        border-bottom: 3px solid #003D5B !important; 
+        margin-bottom: 30px !important;
+    }
+    h2, h3 { color: #003D5B !important; font-weight: 600 !important; }
+    
+    /* Onglets arrondis (Pilules) */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px !important; }
     .stTabs [data-baseweb="tab"] {
-        background-color: #FFFFFF; color: #2A2B2C; border: 2px solid #F2F2F2; border-radius: 8px;
-        padding: 12px 20px; clip-path: polygon(15px 0%, 100% 0%, 100% 100%, 15px 100%, 0% 50%);
-        font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: all 0.3s ease;
+        background-color: transparent !important;
+        color: gray !important;
+        border: 1px solid transparent !important;
+        border-radius: 30px !important; 
+        padding: 10px 25px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: none !important;
+        clip-path: none !important; 
     }
-    .stTabs [data-baseweb="tab"]:hover { border-color: #25E2CC; background-color: #E9FCFA; }
-    .stTabs [aria-selected="true"] { background-color: #003D5B !important; color: #FFFFFF !important; box-shadow: 0 4px 12px rgba(0, 115, 128, 0.3); }
+    .stTabs [data-baseweb="tab"]:hover { 
+        background-color: rgba(37, 226, 204, 0.1) !important; 
+        color: #25E2CC !important;
+    }
+    .stTabs [aria-selected="true"] { 
+        background-color: #003D5B !important; 
+        color: #FFFFFF !important; 
+        box-shadow: 0 4px 12px rgba(0, 61, 91, 0.3) !important;
+    }
     .stTabs [data-baseweb="tab-highlight"] { background-color: transparent !important; }
-    .stTabs [data-baseweb="tab-border-bottom"] { display: none; }
-    div.stButton > button {
-        background-color: #003D5B; color: #FFFFFF; border: 2px solid #003D5B; padding: 10px 25px;
-        border-radius: 25px; font-weight: bold; box-shadow: 0 4px 8px rgba(0, 61, 91, 0.2); transition: all 0.3s ease;
+    .stTabs [data-baseweb="tab-border-bottom"] { display: none !important; }
+    
+    /* Boutons */
+    div.stButton > button, .stDownloadButton > button {
+        border-radius: 30px !important; font-weight: 600 !important; transition: all 0.3s ease !important;
+        border: none !important;
     }
-    div.stButton > button:hover { background-color: #FBCA18; color: #002032; border-color: #FBCA18; transform: translateY(-2px); }
-    .stDownloadButton > button { background-color: #25E2CC !important; color: #002032 !important; border: 2px solid #25E2CC !important; border-radius: 8px !important; font-weight: bold; }
-    .stDownloadButton > button:hover { background-color: #007380 !important; color: #FFFFFF !important; border-color: #007380 !important; }
-    .stAlert [data-testid="stAlertContent"] { border-left: 5px solid #25E2CC; }
-    [data-testid="stMetricValue"] { color: #007380; font-weight: bold; }
+    div.stButton > button {
+        background-color: #003D5B !important; color: #FFFFFF !important;
+    }
+    div.stButton > button:hover { 
+        background-color: #25E2CC !important; color: #002032 !important; 
+        transform: translateY(-3px);
+        box-shadow: 0 8px 15px rgba(37, 226, 204, 0.3) !important; 
+    }
+    .stDownloadButton > button { 
+        background-color: #25E2CC !important; color: #002032 !important;
+    }
+    .stDownloadButton > button:hover { 
+        background-color: #007380 !important; color: #FFFFFF !important; transform: translateY(-3px);
+    }
+    
+    /* Métriques (Style Dashboard) */
+    [data-testid="stMetric"] {
+        background-color: rgba(128, 128, 128, 0.05);
+        border: 1px solid rgba(128, 128, 128, 0.1);
+        border-radius: 12px;
+        padding: 15px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    [data-testid="stMetricLabel"] { color: gray !important; font-size: 12px !important; text-transform: uppercase; letter-spacing: 1px; }
+    [data-testid="stMetricValue"] { color: #003D5B !important; font-weight: 700 !important; font-size: 24px !important; }
+
+    /* Footer */
     .footer-fix {
         position: fixed !important; left: 0 !important; bottom: 0 !important; width: 100% !important;
-        background-color: #002032 !important; color: #FFFFFF !important; text-align: left !important;
-        font-size: 10px !important; padding: 5px 15px !important; z-index: 999999 !important; border-top: 1px solid #F2F2F2 !important;
+        background-color: #001a26 !important; color: #A8F3EB !important; text-align: center !important;
+        font-size: 12px !important; padding: 10px !important; z-index: 999999 !important; 
+        border-top: 2px solid #25E2CC !important;
     }
+    
+    /* Masquer les logos Streamlit Cloud (SANS toucher au menu 3 points) */
+    .stDeployButton { display: none !important; }
+    div[class*="_link_"], div[class*="_profilePreview_"], img[data-testid="appCreatorAvatar"], [data-testid="stLogo"] { display: none !important; }
+    [data-testid="stHeaderActionElements"] a[href*="github.com"], [data-testid="stHeaderActionElements"] a[href*="streamlit.io"] { display: none !important; }
+
+    /* Bouton sidebar flottant */
+    [data-testid="stSidebarCollapseButton"] {
+        opacity: 1 !important; background-color: #25E2CC !important; border: none !important; border-radius: 20px !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+    }
+    [data-testid="stSidebarCollapseButton"] svg { color: #002032 !important; fill: #002032 !important; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -225,6 +289,173 @@ def calculate_slots(de, a, pause_start):
         slots = [s for s in slots if s[1] != fallback_h]
     return slots
 
+# ============ HELPERS FEUILLE « RECAP » (Page 6) ============
+ENTITES = ["PRESTA", "SUPPORT + SAI", "PROD / PLANIFIÉ PROD", "AUTRE / IGNORÉ"]
+ENTITES_MAIN = ENTITES[:3]
+LBL_SANS_CHOIX = "SANS CHOIX"
+ENTITY_COLORS = {"PRESTA": "#4472C4", "SUPPORT + SAI": "#1F9AA8",
+                 "PROD / PLANIFIÉ PROD": "#548235", "AUTRE / IGNORÉ": "#7F7F7F"}
+
+# Règle 1 & 7 : jamais les en-têtes / noms de jours dans les menus
+VALEURS_NON_MENU = {"LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE",
+                    "SHIFT", "WKD", "MENU", "CHOIX", "NOMS", "NOM", "PRENOMS", "PRÉNOMS", "PRENOM",
+                    "PRÉNOM", "PROJETS", "PROJET", "DEPARTEMENT", "DÉPARTEMENT", "DEPT", "CHECK",
+                    "UNIQUE", "CODE", "MATRICULE", "VOTRE MATRICULE", "", "*", "NAN", "NONE", "0"}
+
+def strip_accents(s):
+    return "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
+
+def get_prefix(mat):
+    m = str(mat).strip().upper()
+    return m[:2] if len(m) >= 2 else m
+
+def is_absence_label(val):
+    if pd.isna(val): return False
+    s = strip_accents(str(val)).upper()
+    return ("NE SERAI PAS" in s) or (s.strip() in ("ABSENT", "ABSENTE", "ABSENCE"))
+
+def clean_menu_label(val):
+    if pd.isna(val): return None
+    s = " ".join(str(val).split())
+    if s.upper() in VALEURS_NON_MENU: return None
+    if is_absence_label(s): return None
+    return s
+
+def normalize_entity(raw):
+    if raw is None or pd.isna(raw): return None
+    s = strip_accents(str(raw)).upper().strip()
+    if not s: return None
+    if "PRESTA" in s: return "PRESTA"
+    if "SUPPORT" in s or "SAI" in s: return "SUPPORT + SAI"
+    if "PROD" in s: return "PROD / PLANIFIÉ PROD"
+    return "AUTRE / IGNORÉ"
+
+def build_entity_seed(cmd_df):
+    """Construit la table Préfixe -> Entité (équivalent colonnes P:Q du Recap).
+       Défaut = valeur la plus fréquente de « Departement » par préfixe + règle SA -> SUPPORT."""
+    seed = {}
+    if cmd_df is not None and not cmd_df.empty:
+        dep_col = next((c for c in cmd_df.columns
+                        if "DEPARTEMENT" in strip_accents(str(c)).upper()
+                        or strip_accents(str(c)).upper() in ("DEPT", "ENTITE", "SERVICE")), None)
+        if dep_col:
+            tmp = cmd_df[["Paid ID", dep_col]].dropna(subset=[dep_col]).copy()
+            tmp["prefix"] = tmp["Paid ID"].astype(str).apply(get_prefix)
+            tmp["ent"] = tmp[dep_col].apply(normalize_entity)
+            tmp = tmp[tmp["ent"].notna()]
+            if not tmp.empty:
+                seed = tmp.groupby("prefix")["ent"].agg(lambda x: x.mode().iloc[0]).to_dict()
+    seed["SA"] = "SUPPORT + SAI"   # SI(GAUCHE(matricule;2)="SA";"SUPPORT";...)
+    return seed
+
+def entity_badge_html(ent):
+    c = ENTITY_COLORS.get(ent, "#7F7F7F")
+    return (f"<div style='writing-mode:vertical-rl;transform:rotate(180deg);background:{c};color:#fff;"
+            f"font-weight:700;font-size:13px;letter-spacing:1px;border-radius:10px;padding:16px 6px;"
+            f"min-height:140px;display:flex;align-items:center;justify-content:center;'>{ent}</div>")
+
+def style_recap_table(df):
+    def hl(row):
+        c = str(row["Choix"])
+        if c == "TOTAL":
+            return ["font-weight:800;background-color:rgba(0,61,91,0.12);"] * len(row)
+        if c.startswith("dont «"):
+            return ["font-style:italic;color:#8a8a8a;"] * len(row)
+        if c == LBL_SANS_CHOIX:
+            return ["font-weight:600;"] * len(row)
+        return [""] * len(row)
+    f_pct = lambda v: "" if pd.isna(v) else ("%.1f" % v).replace(".", ",") + " %"
+    f_int = lambda v: "" if (pd.isna(v) or not isinstance(v, (int, float, np.integer, np.floating))) else f"{int(round(float(v)))}"
+    return df.style.apply(hl, axis=1).format({"Nombres": f_int, "Pourcentage": f_pct, "A preparer": f_int})
+
+def derive_week_dates(week_key):
+    """Déduit les dates réelles (lundi → dimanche) depuis le libellé Sxx."""
+    try:
+        m = re.search(r"S(\d{1,2})", str(week_key).upper())
+        if not m: return {}
+        wk = int(m.group(1))
+        if not 1 <= wk <= 53: return {}
+        year = datetime.datetime.now().year
+        for y in (year, year - 1, year + 1):
+            try:
+                monday = datetime.date.fromisocalendar(y, wk, 1)
+                return {jours[i]: monday + datetime.timedelta(days=i) for i in range(7)}
+            except ValueError:
+                continue
+    except Exception:
+        pass
+    return {}
+
+def compute_recap_menus(planning_df, cmd_df, mapping, jours, taux_by_entity, taux_default):
+    """Logique feuille Recap : entité par préfixe matricule ; Nombres = commandes par menu
+       + SANS CHOIX (planifiés sans commande + absences déclarées) ;
+       Pourcentage = part du total entité/jour ; A preparer = Nombres × (1 − taux), arrondi Excel."""
+    melted = pd.DataFrame()
+    if cmd_df is not None and not cmd_df.empty:
+        day_cols = [j for j in jours if j in cmd_df.columns]
+        melted = cmd_df.melt(id_vars=["Paid ID"], value_vars=day_cols, var_name="Jour", value_name="Brut")
+        melted = melted[melted["Brut"].notna()].copy()
+        melted["Brut"] = melted["Brut"].astype(str).str.strip()
+        melted = melted[melted["Brut"] != ""]
+        melted["Entite"] = melted["Paid ID"].astype(str).apply(lambda x: mapping.get(get_prefix(x), "PROD / PLANIFIÉ PROD"))
+        melted["Absence"] = melted["Brut"].apply(is_absence_label)
+        melted["Menu"] = melted["Brut"].apply(clean_menu_label)
+
+    planned_ids = {(j, e): set() for j in jours for e in ENTITES}
+    if planning_df is not None and not planning_df.empty:
+        p = planning_df.copy()
+        p["Paid ID"] = p["Paid ID"].astype(str)
+        p = p[~p["Paid ID"].isin(["", "NAN", "NONE", "*"])]
+        p["Entite"] = p["Paid ID"].apply(lambda x: mapping.get(get_prefix(x), "PROD / PLANIFIÉ PROD"))
+        for j in jours:
+            if f"{j}_Flag" in p.columns:
+                for ent, g in p[p[f"{j}_Flag"] == 1].groupby("Entite"):
+                    planned_ids[(j, ent)] |= set(g["Paid ID"])
+
+    menus_cnt, abs_cnt, ordered, day_menu_totals = {}, {}, {}, {}
+    if not melted.empty:
+        for (j, ent, mn), g in melted[melted["Menu"].notna()].groupby(["Jour", "Entite", "Menu"]):
+            menus_cnt[(j, ent, mn)] = len(g)
+            day_menu_totals.setdefault(j, {})
+            day_menu_totals[j][mn] = day_menu_totals[j].get(mn, 0) + len(g)
+        for (j, ent), g in melted[melted["Absence"]].groupby(["Jour", "Entite"]):
+            abs_cnt[(j, ent)] = len(g)
+        valid_resp = melted[melted["Menu"].notna() | melted["Absence"]]
+        for (j, ent), g in valid_resp.groupby(["Jour", "Entite"]):
+            ordered[(j, ent)] = set(g["Paid ID"].astype(str))
+
+    recap, day_totals = {}, {}
+    for j in jours:
+        menu_list = [m for m, _ in sorted(day_menu_totals.get(j, {}).items(), key=lambda kv: (-kv[1], kv[0]))]
+        for ent in ENTITES:
+            facteur = 1.0 - (taux_by_entity.get(ent, taux_default) / 100.0)
+            pids, ords = planned_ids.get((j, ent), set()), ordered.get((j, ent), set())
+            abs_n = abs_cnt.get((j, ent), 0)
+            sans_choix = len(pids - ords) + abs_n                      # Règle 4
+            total_n = sum(menus_cnt.get((j, ent, m), 0) for m in menu_list) + sans_choix
+            rows = []
+            for m in menu_list:
+                n = menus_cnt.get((j, ent, m), 0)
+                rows.append({"Choix": m, "Nombres": n,
+                             "Pourcentage": (n / total_n * 100) if total_n else 0.0,
+                             "A preparer": int(n * facteur + 0.5)})
+            if abs_n:   # ligne d'information (déjà comptée dans SANS CHOIX)
+                rows.append({"Choix": "dont « Je ne serai pas présent » (inclus dans SANS CHOIX)",
+                             "Nombres": abs_n,
+                             "Pourcentage": (abs_n / total_n * 100) if total_n else 0.0, "A preparer": ""})
+            rows.append({"Choix": LBL_SANS_CHOIX, "Nombres": sans_choix,
+                         "Pourcentage": (sans_choix / total_n * 100) if total_n else 0.0,
+                         "A preparer": int(sans_choix * facteur + 0.5)})
+            total_prep = sum(r["A preparer"] for r in rows if isinstance(r["A preparer"], (int, np.integer)))
+            rows.append({"Choix": "TOTAL", "Nombres": total_n,
+                         "Pourcentage": 100.0 if total_n else 0.0, "A preparer": total_prep})
+            recap[(j, ent)] = {"df": pd.DataFrame(rows), "planned_n": len(pids), "reponses": len(ords),
+                               "abs_n": abs_n, "sans_choix": sans_choix, "total_n": total_n,
+                               "total_prep": total_prep}
+        day_totals[j] = sum(recap[(j, e)]["total_prep"] for e in ENTITES_MAIN)
+    return recap, day_totals
+# ============================================================
+
 # --- FONCTIONS DE TRAITEMENT ---
 
 def get_week_number(file, engine):
@@ -303,15 +534,24 @@ def parse_planning(files, jours):
 def parse_commande(file, jours):
     df = pd.read_excel(file)
     df = df.rename(columns={df.columns[0]: 'Paid ID'})
-    if len(df.columns) >= 9:
-        df = df.iloc[:, [0] + list(range(2, 9))]
-        df.columns = ['Paid ID'] + jours
-    else:
-        df = df.iloc[:, [0] + list(range(1, 8))]
-        df.columns = ['Paid ID'] + jours
-    df['Paid ID'] = df['Paid ID'].astype(str).str.replace(" ", "").str.upper()
-    df = df[df['Paid ID'].str.contains(r'[A-Z]-?\d', na=False)]
-    return df
+    day_idx = list(range(2, 9)) if len(df.columns) >= 9 else list(range(1, 8))
+    # Colonnes complémentaires détectées par en-tête (Noms, Projets, Departement...)
+    extras, used = [], set()
+    for idx, c in enumerate(df.columns):
+        if idx == 0 or idx in day_idx:
+            continue
+        cu = strip_accents(str(c)).upper().strip()
+        target = None
+        if cu in ("NOMS", "NOM", "PRENOMS", "PRÉNOMS", "PRENOM", "PRÉNOM"): target = "CMD_Nom"
+        elif cu in ("PROJETS", "PROJET"): target = "CMD_Projet"
+        elif "DEPARTEMENT" in cu or cu in ("DEPT", "ENTITE", "ENTITÉ", "SERVICE"): target = "CMD_Departement"
+        if target and target not in used:
+            extras.append((idx, target)); used.add(target)
+    out = df.iloc[:, [0] + day_idx + [i for i, _ in extras]].copy()
+    out.columns = ["Paid ID"] + jours + [t for _, t in extras]
+    out["Paid ID"] = out["Paid ID"].astype(str).str.replace(" ", "").str.upper()
+    out = out[out["Paid ID"].str.contains(r'[A-Z]-?\d', na=False)]
+    return out
 
 def parse_reference(file):
     """Lit le fichier Liste Actif et retourne un mapping Workday ID -> Paid ID"""
@@ -669,40 +909,133 @@ with tab5:
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
 
-# --- PAGE 6 : COMMANDES PAR MENU ---
+# --- PAGE 6 : RECAP COMMANDES PAR MENU / ENTITÉ / JOUR (feuille « Recap ») ---
 with tab6:
     st.header("Nombre de commandes par menu et par jour")
+    st.caption("Logique Recap : entité = préfixe matricule (« SA » → SUPPORT + SAI, sinon table de correspondance) · "
+               "SANS CHOIX = planifiés sans commande + « Je ne serai pas présent » · A preparer = Nombres × (1 − absentéisme).")
     current_commande = get_current_commande()
-    
-    if st.button("🍽️ Calculer les commandes par menu", key="btn_p6_menus"):
-        if current_commande is None and file_commande is not None:
-            current_commande = parse_commande(file_commande, jours)
-            st.session_state.history_commandes[st.session_state.current_week] = current_commande
-            save_history()
-        if current_commande is not None:
-            with st.spinner("Calcul des menus en cours..."):
-                cmd_melted = current_commande.melt(id_vars=['Paid ID'], value_vars=jours, var_name='Jour', value_name='Menu')
-                cmd_melted = cmd_melted.dropna(subset=['Menu'])
-                cmd_melted['Menu'] = cmd_melted['Menu'].astype(str).str.strip()
-                cmd_melted = cmd_melted[~cmd_melted['Menu'].str.upper().isin(['', '*', 'NAN', 'NONE', 'JE NE SERAI PAS PRÉSENT', 'JE NE SERAI PAS PRESENT'])]
-                if not cmd_melted.empty:
-                    pivot_menus = cmd_melted.pivot_table(index='Menu', columns='Jour', values='Paid ID', aggfunc='count', fill_value=0)
-                    pivot_menus = pivot_menus.reindex(columns=jours, fill_value=0)
-                    pivot_menus['Total Semaine'] = pivot_menus.sum(axis=1)
-                    pivot_menus.loc['Total Commandes'] = pivot_menus.sum(axis=0)
-                    set_calc('menus', pivot_menus)
-                else:
-                    set_calc('menus', pd.DataFrame())
-        else:
-            st.error("Veuillez importer le fichier Commandes.")
-            
-    menus_df = get_calc('menus')
-    if menus_df is not None:
+
+    if (current_commande is None or (isinstance(current_commande, pd.DataFrame) and current_commande.empty)) \
+            and file_commande is not None and st.session_state.current_week:
+        current_commande = parse_commande(file_commande, jours)
+        st.session_state.history_commandes[st.session_state.current_week] = current_commande
+        save_history()
+
+    if current_commande is None or (isinstance(current_commande, pd.DataFrame) and current_commande.empty):
+        st.warning("Aucune commande disponible. Importez le fichier Commandes dans le menu de gauche, puis rechargez la semaine (Page 1).")
+    else:
+        # 1) Nettoyage (une ligne par personne, suppression des lignes exemples du modèle)
+        cmd_use = current_commande.drop_duplicates(subset=["Paid ID"]).copy()
+        cmd_use = cmd_use[~cmd_use["Paid ID"].astype(str).str.upper().str.contains("EXEMPLE|VOTRE MATRICULE", na=False)]
+
+        # 2) Table Préfixe -> Entité (équivalent RECHERCHEX)
+        ids = set(cmd_use["Paid ID"].astype(str))
+        if current_planning is not None and not current_planning.empty:
+            ids |= set(current_planning["Paid ID"].astype(str))
+        prefixes = sorted({get_prefix(i) for i in ids if i and i.strip() and i.upper() not in ("NAN", "NONE")})
+
+        emap = st.session_state.setdefault("entity_mapping_by_week", {}).setdefault(st.session_state.current_week, {})
+        seed = build_entity_seed(cmd_use)
+        for p in prefixes:
+            if p not in emap:
+                emap[p] = seed.get(p, "PROD / PLANIFIÉ PROD")
+
+        with st.expander("🗂️ Correspondance Préfixe matricule → Entité (équivalent formule RECHERCHEX)", expanded=len(prefixes) <= 12):
+            st.caption("Règle : 2 premiers caractères = « SA » → SUPPORT + SAI ; sinon recherche du préfixe ci-dessous. "
+                       "Défaut proposé depuis la colonne « Departement » du fichier commande, sinon PROD / PLANIFIÉ PROD.")
+            filtre = st.text_input("🔍 Filtrer les préfixes affichés", "").strip().upper()
+            shown = [p for p in prefixes if filtre in p] if filtre else prefixes
+            if len(shown) > 40:
+                st.info(f"{len(shown)} préfixes : seuls les 40 premiers sont affichés, affinez le filtre.")
+                shown = shown[:40]
+            mcols = st.columns(4)
+            for i, p in enumerate(shown):
+                with mcols[i % 4]:
+                    try: cur_idx = ENTITES.index(emap.get(p, "PROD / PLANIFIÉ PROD"))
+                    except ValueError: cur_idx = 2
+                    emap[p] = st.selectbox(f"« {p}… »", ENTITES, index=cur_idx, key=f"map_{st.session_state.current_week}_{p}")
+
+        # 3) Taux d'absentéisme par entité (dans votre Excel : 20%, 7%, 14%...)
+        with st.expander("📉 Taux d'absentéisme appliqué au « A preparer » (par entité)"):
+            taux_by_entity = {}
+            tcols = st.columns(3)
+            for i, e in enumerate(ENTITES_MAIN):
+                with tcols[i]:
+                    taux_by_entity[e] = st.number_input(e, min_value=0.0, max_value=50.0, step=0.5,
+                                                        value=float(taux_absenteisme), key=f"taux_ent_{e}")
+
+        # 4) Case rouge « Nombres de presta prévu » du Recap
+        st.markdown("##### 👷 Prestataires prévus (ajout manuel au total « à commander »)")
+        pcols = st.columns(7)
+        presta_prevus = {}
+        for i, j in enumerate(jours):
+            with pcols[i]:
+                presta_prevus[j] = st.number_input(j, min_value=0, step=1, value=0, key=f"presta_prevu_{j}")
+
+        # 5) Calcul
+        recap, day_totals = compute_recap_menus(current_planning, cmd_use, emap, jours, taux_by_entity, taux_absenteisme)
+
+        # 6) Synthèse hebdo
+        summary_df = pd.DataFrame([{"Jour": j, **{e: recap[(j, e)]["total_prep"] for e in ENTITES_MAIN},
+                                    "Presta. prévus": int(presta_prevus[j]),
+                                    "À commander": day_totals[j] + int(presta_prevus[j])} for j in jours])
+        total_row = {"Jour": "TOTAL SEMAINE"}
+        for e in ENTITES_MAIN: total_row[e] = int(sum(recap[(j, e)]["total_prep"] for j in jours))
+        total_row["Presta. prévus"] = int(sum(presta_prevus.values()))
+        total_row["À commander"] = int(sum(day_totals.values()) + sum(presta_prevus.values()))
+        summary_df = pd.concat([summary_df, pd.DataFrame([total_row])], ignore_index=True)
+        st.markdown("#### 📈 Synthèse de la semaine (repas à préparer)")
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+        # 7) Export
+        export_rows = [{"Jour": j, "Entité": ent, "Choix": r["Choix"], "Nombres": r["Nombres"],
+                        "Pourcentage (%)": round(float(r["Pourcentage"]), 1), "A preparer": r["A preparer"]}
+                       for j in jours for ent in ENTITES for _, r in recap[(j, ent)]["df"].iterrows()]
+        st.download_button("📥 Télécharger le récapitulatif complet (Excel)", data=to_excel(pd.DataFrame(export_rows)),
+                           file_name="recap_commandes_menus.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        # 8) Détail par jour (affichage type feuille Recap)
+        week_dates = derive_week_dates(st.session_state.current_week)
+        mois_fr = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+                   "septembre", "octobre", "novembre", "décembre"]
+        if current_planning is None or current_planning.empty:
+            st.info("ℹ️ Planning non chargé : SANS CHOIX ne contient que les absences déclarées.")
         st.markdown("---")
-        st.download_button("📥 Télécharger les commandes par menu (Excel)", data=to_excel(menus_df.reset_index()), file_name="menus_commandes.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.dataframe(menus_df.style.format("{:.0f}"), use_container_width=True, height=700)
-    elif current_planning is None:
-        st.warning("Aucune donnée disponible.")
+        st.subheader("🗓️ Détail par jour")
+
+        for j in jours:
+            d = week_dates.get(j)
+            date_txt = f" {d.day:02d} {mois_fr[d.month - 1]} {d.year}" if d else ""
+            total_day = day_totals[j] + int(presta_prevus[j])
+            ent_line = " &nbsp;•&nbsp; ".join(
+                f"<b style='color:{ENTITY_COLORS[e]}'>{e} : {recap[(j, e)]['total_prep']}</b>" for e in ENTITES_MAIN)
+            st.markdown(
+                f"""
+                <div style="background:#003D5B;color:#FFFFFF;padding:10px 18px;border-radius:12px 12px 0 0;font-weight:700;font-size:17px;">
+                    📅 {j}{date_txt}
+                    <span style="float:right;font-weight:400;font-size:13px;opacity:.85;">Semaine {st.session_state.current_week or ''}</span>
+                </div>
+                <div style="border:2px solid #003D5B;border-top:none;border-radius:0 0 12px 12px;padding:10px 18px;margin-bottom:12px;">
+                    <span style="font-size:17px;font-weight:800;color:#003D5B;">À commander : {total_day} repas</span>
+                    <span style="color:#888888;font-size:13px;">&nbsp;(dont {int(presta_prevus[j])} prestataire(s) prévu(s))</span><br>
+                    <span style="font-size:13px;color:#444444;">À préparer → {ent_line}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            for ent in ENTITES_MAIN:
+                blk = recap[(j, ent)]
+                left, right = st.columns([0.08, 0.92])
+                with left:
+                    st.markdown(entity_badge_html(ent), unsafe_allow_html=True)
+                with right:
+                    st.caption(f"Planifiés : {blk['planned_n']} · Réponses : {blk['reponses']} · "
+                               f"Absences déclarées : {blk['abs_n']} · SANS CHOIX : {blk['sans_choix']}")
+                    st.dataframe(style_recap_table(blk["df"]), use_container_width=True, hide_index=True)
+            blk_a = recap.get((j, "AUTRE / IGNORÉ"))
+            if blk_a and (blk_a["total_n"] > 0 or blk_a["planned_n"] > 0):
+                st.warning(f"⚠️ {j} : {blk_a['total_n']} commande(s) / {blk_a['planned_n']} planifié(s) avec un préfixe non classé. Ajustez la correspondance ci-dessus.")
+            st.markdown("")
 
 # --- PAGE 7 : ANOMALIES ---
 with tab7:
