@@ -5,15 +5,13 @@ import datetime
 import io
 import os
 import pickle
-import re            # ═══ [MODIF 1] nécessaires à la page 6 uniquement ═══
-import unicodedata   # ═══ [MODIF 1] ═══
+import re            # ═══ [MODIF A] requis par la page 6 ═══
+import unicodedata   # ═══ [MODIF A] ═══
 
 # --- NETTOYAGE DU CACHE ---
 st.cache_data.clear()
 
 st.set_page_config(page_title="LogiPlan", layout="wide")
-
-APP_VERSION = "LogiPlan v4.1"   # ═══ [MODIF 2] témoin : si vous ne le voyez pas en bas de la sidebar, le nouveau code n'est pas déployé ═══
 
 # --- INJECTION CSS POUR LA CHARTRE GRAPHIQUE ---
 custom_css = """
@@ -113,34 +111,26 @@ taux_absenteisme = st.sidebar.slider("Estimation de l'absentéisme (%)", 0, 30, 
 
 jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
-# ═══ [MODIF 3] Validation des données (nécessaire pour réparer l'historique corrompu) ═══
+# ═══ [MODIF B] Validation des données : une semaine n'est exploitable que si
+# c'est un DataFrame contenant les colonnes minimales du planning. ═══
 COLONNES_OBLIGATOIRES = ['TRANSPORT', 'WORKDAY ID', 'Paid ID', 'Nom', 'Projet', 'Statut']
 
 def planning_valide(df):
     return (isinstance(df, pd.DataFrame)
             and not df.empty
             and all(c in df.columns for c in COLONNES_OBLIGATOIRES))
-# ═══ [FIN MODIF 3] ═══
+# ═══ [FIN MODIF B] ═══
 
 # --- SYSTÈME D'HISTORIQUE PERSISTANT ---
-HISTORY_FILE = "planning_history.pkl"
+HISTORY_FILE = "planning_history_v2.pkl"   # ═══ [MODIF C] nouveau nom : l'ancien fichier corrompu n'est plus jamais lu ═══
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "rb") as f:
-                data = pickle.load(f)
+                return pickle.load(f)
         except:
             return {}
-        # ═══ [MODIF 4] On écarte toute donnée corrompue/incompatible (ex: semaine S38 invalide
-        # sauvegardée par une version intermédiaire). Sans ceci, l'app plante au démarrage. ═══
-        plannings = {k: v for k, v in (data.get('plannings') or {}).items() if planning_valide(v)}
-        commandes = {k: v for k, v in (data.get('commandes') or {}).items()
-                     if k in plannings and isinstance(v, pd.DataFrame) and 'Paid ID' in v.columns}
-        calculs = {k: v for k, v in (data.get('calculs') or {}).items()
-                   if k in plannings and isinstance(v, dict)}
-        return {'plannings': plannings, 'commandes': commandes, 'calculs': calculs}
-        # ═══ [FIN MODIF 4] ═══
     return {}
 
 def save_history():
@@ -179,14 +169,13 @@ else:
     st.session_state.current_week = None
     st.sidebar.info("Aucune semaine chargée. Importez un fichier planning.")
 
-st.sidebar.caption(APP_VERSION)   # ═══ [MODIF 2] ═══
+st.sidebar.caption("LogiPlan v5 — Recap")   # ═══ [MODIF D] témoin de déploiement : doit apparaître en bas de la sidebar ═══
 
 def get_current_planning():
-    # ═══ [MODIF 5] Ne retourne la semaine que si les données sont exploitables
-    # (rend le TypeError techniquement impossible sur toutes les pages) ═══
+    # ═══ [MODIF E] ne retourne la semaine que si les données sont exploitables ═══
     v = st.session_state.history_plannings.get(st.session_state.current_week)
     return v if planning_valide(v) else None
-    # ═══ [FIN MODIF 5] ═══
+    # ═══ [FIN MODIF E] ═══
 
 def get_current_commande():
     return st.session_state.history_commandes.get(st.session_state.current_week)
@@ -300,14 +289,14 @@ def calculate_slots(de, a, pause_start):
         slots = [s for s in slots if s[1] != fallback_h]
     return slots
 
-# ═══ [MODIF 6] Helpers de la page 6 uniquement (feuille « Recap »).
-# Aucune autre page n'utilise ces fonctions. ═══
+# ═══ [MODIF F-1] HELPERS DE LA PAGE 6 UNIQUEMENT (aucune autre page ne les utilise) ═══
 ENTITES = ["PRESTA", "SUPPORT + SAI", "PROD / PLANIFIÉ PROD", "AUTRE / IGNORÉ"]
 ENTITES_MAIN = ENTITES[:3]
 LBL_SANS_CHOIX = "SANS CHOIX"
 ENTITY_COLORS = {"PRESTA": "#4472C4", "SUPPORT + SAI": "#1F9AA8",
                  "PROD / PLANIFIÉ PROD": "#548235", "AUTRE / IGNORÉ": "#7F7F7F"}
 
+# Règle 1 & 7 : les noms de jours / en-têtes ne sont jamais des menus
 VALEURS_NON_MENU = {"LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE",
                     "SHIFT", "WKD", "MENU", "CHOIX", "NOMS", "NOM", "PRENOMS", "PRÉNOMS", "PRENOM",
                     "PRÉNOM", "PROJETS", "PROJET", "DEPARTEMENT", "DÉPARTEMENT", "DEPT", "CHECK",
@@ -343,7 +332,7 @@ def normalize_entity(raw):
 
 def build_entity_seed(cmd_df):
     """Table Préfixe -> Entité, proposée d'après la colonne « Departement » du fichier commande
-    (équivalent de vos colonnes Unique/Code du Recap)."""
+    (équivalent de vos colonnes P:Q du Recap)."""
     seed = {}
     try:
         if cmd_df is not None and not cmd_df.empty:
@@ -359,7 +348,7 @@ def build_entity_seed(cmd_df):
                     seed = tmp.groupby("prefix")["ent"].agg(lambda x: x.mode().iloc[0]).to_dict()
     except Exception:
         pass
-    seed["SA"] = "SUPPORT + SAI"   # SI(GAUCHE(matricule;2)="SA";"SUPPORT";RECHERCHEX(...))
+    seed["SA"] = "SUPPORT + SAI"   # SI(GAUCHE(matricule;2)="SA";"SUPPORT";...)
     return seed
 
 def entity_badge_html(ent):
@@ -467,7 +456,7 @@ def compute_recap_menus(planning_df, cmd_df, mapping, jours, taux_by_entity, tau
                                "total_prep": total_prep}
         day_totals[j] = sum(recap[(j, e)]["total_prep"] for e in ENTITES_MAIN)
     return recap, day_totals
-# ═══ [FIN MODIF 6] ═══
+# ═══ [FIN MODIF F-1] ═══
 
 # --- FONCTIONS DE TRAITEMENT ---
 
@@ -545,11 +534,20 @@ def parse_planning(files, jours):
     return pd.DataFrame()
 
 def parse_commande(file, jours):
-    df = pd.read_excel(file)
+    # ═══ [MODIF F-2] version robuste : détecte automatiquement la ligne d'en-tête
+    # (le modèle peut avoir « Votre matricule » seul sur la 1re ligne, puis
+    # « Exemple: W00123 | Shift | Lundi | ... » sur la 2e) et exclut la ligne d'exemple. ═══
+    raw = pd.read_excel(file, header=None, nrows=6)
+    header_row = 0
+    for i in range(len(raw)):
+        vals = [str(v).strip().upper() for v in raw.iloc[i].tolist()]
+        if any("LUNDI" in v for v in vals):
+            header_row = i
+            break
+    df = pd.read_excel(file, header=header_row)
     df = df.rename(columns={df.columns[0]: 'Paid ID'})
     day_idx = list(range(2, 9)) if len(df.columns) >= 9 else list(range(1, 8))
-    # ═══ [MODIF 7] Récupération optionnelle de Noms / Projets / Departement (pour la page 6).
-    # Si ces en-têtes sont absents, comportement identique à l'original. ═══
+    # Colonnes complémentaires détectées par en-tête (Noms, Projets, Departement...)
     extras, used = [], set()
     for idx, c in enumerate(df.columns):
         if idx == 0 or idx in day_idx:
@@ -563,45 +561,42 @@ def parse_commande(file, jours):
             extras.append((idx, target)); used.add(target)
     out = df.iloc[:, [0] + day_idx + [i for i, _ in extras]].copy()
     out.columns = ["Paid ID"] + jours + [t for _, t in extras]
-    # ═══ [FIN MODIF 7] ═══
     out["Paid ID"] = out["Paid ID"].astype(str).str.replace(" ", "").str.upper()
     out = out[out["Paid ID"].str.contains(r'[A-Z]-?\d', na=False)]
+    # Règle 1 : la ligne d'exemple « Exemple: W00123 » du modèle n'est jamais comptée
+    out = out[~out["Paid ID"].str.contains("EXEMPLE|VOTRE|MATRICULE", na=False)]
     return out
+    # ═══ [FIN MODIF F-2] ═══
 
 def parse_reference(file):
     """Lit le fichier Liste Actif et retourne un mapping Workday ID -> Paid ID"""
     try:
         df = pd.read_excel(file)
-        # Nettoyage ultra-agressif : supprime TOUS les espaces (visibles et invisibles) et met en majuscule
         cols_cleaned = []
         for c in df.columns:
             c_str = str(c).upper()
-            c_str = "".join(c_str.split()) # Supprime tous les espaces, y compris les insécables
+            c_str = "".join(c_str.split())
             cols_cleaned.append(c_str)
         df.columns = cols_cleaned
     except Exception as e:
         return None
-        
+
     wd_col = None
     pd_col = None
-    
-    # Les colonnes sont maintenant nettoyées, par exemple "EMPLOYEEID", "PREVIOUSPAYROLLID"
     for c in df.columns:
         if 'WORKDAY' in c or 'EMPLOYEEID' in c: wd_col = c
         if 'PAYROLLID' in c or 'PAIDID' in c or 'MATRICULEPAIE' in c: pd_col = c
-            
+
     if wd_col is None or pd_col is None:
         return {'error': True, 'columns': list(df.columns)}
-        
+
     df = df[[wd_col, pd_col]].copy()
     df[wd_col] = df[wd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
     df[pd_col] = df[pd_col].astype(str).str.replace(" ", "").str.replace(".0", "").str.upper()
-    
     df = df.dropna(subset=[wd_col])
     df = df[df[wd_col].str.contains(r'[A-Z0-9]', na=False)]
     df = df[~df[wd_col].isin(['NAN', 'NONE', '*', ''])]
     df = df.drop_duplicates(subset=[wd_col])
-    
     return df.rename(columns={wd_col: 'WORKDAY ID', pd_col: 'REF_PAID_ID'})
 
 # --- GESTION DU FICHIER DE RÉFÉRENCE ---
@@ -630,7 +625,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 current_planning = get_current_planning()
 
-# --- PAGE 1 : REGROUPEMENT ---
+# --- PAGE 1 : REGROUPEMENT ---   (INCHANGÉ, sauf validation avant sauvegarde)
 with tab1:
     st.header("Regroupement des plannings")
     
@@ -650,25 +645,23 @@ with tab1:
             week_num = week_name_input.strip() if week_name_input else default_week_name
             if not week_num:
                 week_num = f"S{datetime.datetime.now().isocalendar().week:02d}"
-                
             with st.spinner("Traitement des fichiers en cours..."):
                 planning_df = parse_planning(files_planning, jours)
-                # ═══ [MODIF 8] On ne sauvegarde que si le planning est exploitable
-                # (c'est ainsi que le fichier d'historique avait été corrompu) ═══
+                # ═══ [MODIF B-suite] on ne sauvegarde que si le planning est exploitable ═══
                 if planning_valide(planning_df):
                     st.session_state.history_plannings[week_num] = planning_df
                     if file_commande:
                         try:
                             st.session_state.history_commandes[week_num] = parse_commande(file_commande, jours)
                         except Exception as e:
-                            st.warning(f"Fichier Commandes illisible ({e}) — l'import du planning continue.")
+                            st.warning(f"Fichier Commandes ignoré ({e}) — l'import du planning est conservé.")
                     save_history()
                     st.session_state.current_week = week_num
                     st.success(f"Semaine {week_num} chargée et sauvegardée avec succès !")
                     st.rerun()
                 else:
-                    st.error("❌ Import interrompu : aucun planning exploitable reconnu (feuille « Tout (WFO+WFH) » ou « TMM » attendue). Rien n'a été enregistré.")
-                # ═══ [FIN MODIF 8] ═══
+                    st.error("❌ Aucun planning exploitable reconnu (feuille « Tout (WFO+WFH) » ou « TMM » attendue). Rien n'a été enregistré.")
+                # ═══ [FIN MODIF B-suite] ═══
         else:
             st.error("Veuillez importer au moins un fichier de Planning dans le menu de gauche.")
             
@@ -707,7 +700,7 @@ with tab1:
     elif not st.session_state.current_week:
         st.info("Veuillez importer un fichier pour commencer.")
 
-# --- PAGE 2 : EFFECTIFS ---   (IDENTIQUE À VOTRE ORIGINAL)
+# --- PAGE 2 : EFFECTIFS ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
 with tab2:
     st.header("Nombre de planifiés par projet et par jour")
     if current_planning is not None:
@@ -756,7 +749,7 @@ with tab2:
     else:
         st.warning("Aucune donnée disponible. Importez un planning.")
 
-# --- PAGE 3 : PLANIFIES PAR SHIFT ---   (IDENTIQUE À VOTRE ORIGINAL)
+# --- PAGE 3 : PLANIFIES PAR SHIFT ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
 with tab3:
     st.header("Planifiés par Shift (Début de journée)")
     if current_planning is not None:
@@ -803,7 +796,7 @@ with tab3:
     else:
         st.warning("Aucune donnée disponible. Importez un planning.")
 
-# --- PAGE 4 : PLANIFIES PAR CRENEAU ---   (IDENTIQUE À VOTRE ORIGINAL)
+# --- PAGE 4 : PLANIFIES PAR CRENEAU ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
 with tab4:
     st.header("Prevpoz et staffing par créneaux horaires")
     if current_planning is not None:
@@ -838,7 +831,6 @@ with tab4:
             pivot_slots['Total Jour'] = pivot_slots.sum(axis=1)
             pivot_slots.loc['Total par Créneau'] = pivot_slots.sum(axis=0)
             
-            # Calcul du DataFrame des Pics
             peak_data = []
             for proj, day_data in project_hourly.items():
                 row_data = {'Projet': proj}
@@ -846,20 +838,14 @@ with tab4:
                     row_data[j] = max(day_data[j].values()) if day_data[j].values() else 0
                 peak_data.append(row_data)
             df_peaks = pd.DataFrame(peak_data).set_index('Projet')
-            
-            # Ajout de la ligne Pic Global (Somme simple des pics de chaque projet)
             global_peaks = df_peaks[jours].sum().to_dict()
             df_peaks.loc['Pic Global (Tous Projets)'] = global_peaks
             
-        # 1. AFFICHAGE DU PIC EN PREMIER PLAN
         st.markdown("#### 📊 Prevpoz et staffing par créneaux horaires")
         st.write("Ce tableau indique le nombre maximum de personnes présentes simultanément (en overlapping de shifts).")
         st.dataframe(df_peaks.style.format("{:.0f}"), use_container_width=True)
-        
         excel_peaks = to_excel(df_peaks.reset_index())
         st.download_button("📥 Télécharger le Pic de présence", data=excel_peaks, file_name="pic_presence.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        
-        # 2. AFFICHAGE DU TABLEAU DÉTAILLÉ EN SECOND PLAN (DANS UN EXPANDER)
         st.markdown("---")
         with st.expander("🕒 Voir le détail complet par créneau horaire"):
             excel_data = to_excel(pivot_slots.reset_index())
@@ -868,7 +854,7 @@ with tab4:
     else:
         st.warning("Aucune donnée disponible. Importez un planning.")
 
-# --- PAGE 5 : CONFRONTATION ---   (IDENTIQUE À VOTRE ORIGINAL)
+# --- PAGE 5 : CONFRONTATION ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
 with tab5:
     st.header("↔️ Confrontation Planning & Commandes")
     current_commande = get_current_commande()
@@ -930,7 +916,7 @@ with tab5:
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
 
-# ═══ [MODIF 9] PAGE 6 : COMMANDES PAR MENU — SEULE PAGE MODIFIÉE (logique feuille « Recap ») ═══
+# ═══ [MODIF F-3] PAGE 6 : COMMANDES PAR MENU — SEULE PAGE REFAITE (feuille « Recap ») ═══
 with tab6:
     st.header("Nombre de commandes par menu et par jour")
     st.caption("Logique « Recap » : entité = préfixe du matricule (« SA » → SUPPORT + SAI, sinon table de correspondance) · "
@@ -951,12 +937,8 @@ with tab6:
     if current_commande is None or (isinstance(current_commande, pd.DataFrame) and current_commande.empty):
         st.warning("Aucune commande disponible. Importez le fichier Commandes dans le menu de gauche, puis rechargez la semaine sur la Page 1.")
     else:
-        # 1) Nettoyage : une ligne par personne + exclusion des lignes d'exemple du modèle
-        cmd_use = current_commande.drop_duplicates(subset=["Paid ID"]).copy()
-        cmd_use = cmd_use[~cmd_use["Paid ID"].astype(str).str.upper().str.contains("EXEMPLE|VOTRE MATRICULE", na=False)]
-
-        # 2) Table Préfixe -> Entité (équivalent de la formule RECHERCHEX de votre Recap)
-        ids = set(cmd_use["Paid ID"].astype(str))
+        # 1) Table Préfixe -> Entité (équivalent RECHERCHEX de votre Recap)
+        ids = set(current_commande["Paid ID"].astype(str))
         if current_planning is not None:
             ids |= set(current_planning["Paid ID"].astype(str))
         prefixes = sorted({get_prefix(i) for i in ids if i and i.strip() and i.upper() not in ("NAN", "NONE")})
@@ -967,19 +949,13 @@ with tab6:
             st.session_state.entity_mapping_by_week[st.session_state.current_week] = {}
         emap = st.session_state.entity_mapping_by_week[st.session_state.current_week]
 
-        seed = build_entity_seed(cmd_use)
-        saved_map = get_calc('entity_map')
-        if not isinstance(saved_map, dict):
-            saved_map = {}
+        seed = build_entity_seed(current_commande)
         for p in prefixes:
             if p not in emap:
-                if p in saved_map:
-                    emap[p] = saved_map[p]
-                else:
-                    emap[p] = seed.get(p, "PROD / PLANIFIÉ PROD")
+                emap[p] = seed.get(p, "PROD / PLANIFIÉ PROD")
 
         with st.expander("🗂️ Correspondance Préfixe matricule → Entité (équivalent RECHERCHEX)", expanded=len(prefixes) <= 12):
-            st.caption("Règle : les 2 premiers caractères du matricule = « SA » → SUPPORT + SAI ; sinon recherche du préfixe ci-dessous. "
+            st.caption("Règle : 2 premiers caractères = « SA » → SUPPORT + SAI ; sinon recherche du préfixe ci-dessous. "
                        "Défaut proposé depuis la colonne « Departement » du fichier commande, sinon PROD / PLANIFIÉ PROD.")
             filtre = st.text_input("🔍 Filtrer les préfixes affichés", "", key="filtre_prefixes").strip().upper()
             shown = [p for p in prefixes if filtre in p] if filtre else prefixes
@@ -994,12 +970,8 @@ with tab6:
                     except ValueError:
                         cur_idx = 2
                     emap[p] = st.selectbox(f"« {p}… »", ENTITES, index=cur_idx, key=f"map_{st.session_state.current_week}_{p}")
-            if st.button("💾 Enregistrer cette correspondance pour la semaine", key="btn_save_map"):
-                set_calc('entity_map', dict(emap))
-                save_history()
-                st.success("Correspondance enregistrée pour cette semaine.")
 
-        # 3) Taux d'absentéisme par entité (vos cases 20% / 7% / 14% du Recap)
+        # 2) Taux d'absentéisme par entité (vos cases 20% / 7% / 14% du Recap)
         with st.expander("📉 Taux d'absentéisme appliqué au « A preparer » (par entité)"):
             taux_by_entity = {}
             tcols = st.columns(3)
@@ -1008,7 +980,7 @@ with tab6:
                     taux_by_entity[e] = st.number_input(e, min_value=0.0, max_value=50.0, step=0.5,
                                                         value=float(taux_absenteisme), key=f"taux_ent_{e}")
 
-        # 4) « Nombres de presta prévu » (case du Recap)
+        # 3) « Nombres de presta prévu » (case du Recap)
         st.markdown("##### 👷 Prestataires prévus (ajoutés au total « à commander »)")
         pcols = st.columns(7)
         presta_prevus = {}
@@ -1016,10 +988,10 @@ with tab6:
             with pcols[i]:
                 presta_prevus[j] = st.number_input(j, min_value=0, step=1, value=0, key=f"presta_prevu_{j}")
 
-        # 5) Calcul
-        recap, day_totals = compute_recap_menus(current_planning, cmd_use, emap, jours, taux_by_entity, taux_absenteisme)
+        # 4) Calcul
+        recap, day_totals = compute_recap_menus(current_planning, current_commande, emap, jours, taux_by_entity, taux_absenteisme)
 
-        # 6) Synthèse de la semaine
+        # 5) Synthèse de la semaine
         summary_df = pd.DataFrame([{"Jour": j, **{e: recap[(j, e)]["total_prep"] for e in ENTITES_MAIN},
                                     "Presta. prévus": int(presta_prevus[j]),
                                     "À commander": day_totals[j] + int(presta_prevus[j])} for j in jours])
@@ -1032,7 +1004,7 @@ with tab6:
         st.markdown("#### 📈 Synthèse de la semaine (repas à préparer)")
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-        # 7) Export Excel
+        # 6) Export Excel
         export_rows = [{"Jour": j, "Entité": ent, "Choix": r["Choix"], "Nombres": r["Nombres"],
                         "Pourcentage (%)": round(float(r["Pourcentage"]), 1), "A preparer": r["A preparer"]}
                        for j in jours for ent in ENTITES for _, r in recap[(j, ent)]["df"].iterrows()]
@@ -1040,7 +1012,7 @@ with tab6:
                            file_name="recap_commandes_menus.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_p6")
 
-        # 8) Détail par jour : blocs empilés PRESTA / SUPPORT+SAI / PROD, comme la feuille Recap
+        # 7) Détail par jour : blocs empilés PRESTA / SUPPORT+SAI / PROD, comme la feuille Recap
         week_dates = derive_week_dates(st.session_state.current_week)
         mois_fr = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
                    "septembre", "octobre", "novembre", "décembre"]
@@ -1080,9 +1052,9 @@ with tab6:
             if blk_a and (blk_a["total_n"] > 0 or blk_a["planned_n"] > 0):
                 st.warning(f"⚠️ {j} : {blk_a['total_n']} commande(s) / {blk_a['planned_n']} planifié(s) avec un préfixe non classé. Ajustez la correspondance ci-dessus.")
             st.markdown("")
-# ═══ [FIN MODIF 9] ═══
+# ═══ [FIN MODIF F-3] ═══
 
-# --- PAGE 7 : ANOMALIES ---   (IDENTIQUE À VOTRE ORIGINAL)
+# --- PAGE 7 : ANOMALIES ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
 with tab7:
     st.header("⚠️ Liste des anomalies (Planification vs Commande)")
     conf_df = get_calc('conf')
@@ -1128,7 +1100,7 @@ with tab7:
     elif current_planning is None:
         st.warning("Aucune donnée disponible.")
 
-    # --- VÉRIFICATION DES MATRICULES (EN 2e PLAN) ---   (IDENTIQUE À VOTRE ORIGINAL)
+    # --- VÉRIFICATION DES MATRICULES (EN 2e PLAN) ---   (STRICTEMENT IDENTIQUE À L'ORIGINAL)
     st.markdown("---")
     with st.expander("🆔 Vérification des Matricules Paie (Workday vs Liste Actif)"):
         if current_planning is None:
@@ -1143,18 +1115,12 @@ with tab7:
                 st.info("Veuillez importer le fichier 'Liste Actif' dans le menu de gauche pour activer cette vérification.")
         else:
             ref_df = st.session_state.reference_data
-            # Fusionner le planning avec la liste actif
             check_df = pd.merge(current_planning[['WORKDAY ID', 'Paid ID', 'Nom', 'Projet']], 
                                 ref_df[['WORKDAY ID', 'REF_PAID_ID']], 
                                 on='WORKDAY ID', how='left')
-            
-            # 1. Matricules différents
             mismatch_df = check_df[(check_df['REF_PAID_ID'].notna()) & 
                                    (check_df['Paid ID'].astype(str) != check_df['REF_PAID_ID'].astype(str))]
-            
-            # 2. Matricules Workday non trouvés dans la liste actif
             not_found_df = check_df[check_df['REF_PAID_ID'].isna()]
-            
             if not mismatch_df.empty:
                 st.warning(f"⚠️ {len(mismatch_df)} collaborateurs ont un matricule paie différent dans le planning par rapport à la Liste Actif.")
                 st.dataframe(mismatch_df[['Nom', 'Projet', 'WORKDAY ID', 'Paid ID', 'REF_PAID_ID']], use_container_width=True)
@@ -1162,7 +1128,6 @@ with tab7:
                 st.download_button("📥 Télécharger les matricules erronés", data=excel_mismatch, file_name="matricules_errones.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             else:
                 st.success("✅ Tous les matricules paie présents dans la Liste Actif correspondent au planning.")
-                
             if not not_found_df.empty:
                 st.markdown("---")
                 st.info(f"ℹ️ {len(not_found_df)} collaborateurs du planning sont introuvables dans la Liste Actif.")
